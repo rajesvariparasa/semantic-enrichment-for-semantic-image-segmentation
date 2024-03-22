@@ -1,1 +1,1 @@
-# semantic-enrichment-for-semantic-image-segmentation
+# Knowledge-based semantic enrichments for semantic image segmentation
