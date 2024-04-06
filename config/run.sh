@@ -3,34 +3,34 @@
 #SBATCH --gres gpu:1
 #SBATCH --constraint a6000
 #SBATCH --constraint m48
-#SBATCH --mem 10G
+#SBATCH --mem 32G
 #SBATCH --time 10:00:00
 #SBATCH --partition shortrun
-#SBATCH --output=siamdl_seg%j.out
+#SBATCH --output=siamdl%j.out
 #SBATCH --mail-type FAIL,END
 
 if [[ ! -z ${SLURM_JOBID+z} ]]; then
     echo "Setting up SLURM environment"
     # Load the Conda environment
     source /share/common/anaconda/etc/profile.d/conda.sh
-    conda activate pytorch-env
+    conda activate torch_env
 else
     echo "Not a SLURM job"
 fi
 
 set -o errexit -o pipefail -o nounset
-
+cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
-OUT_PATH="/share/projects/siamdl/TestRun1/outputs"
+OUT_PATH="/share/projects/siamdl/TestRun1/outputs/"
 BATCH_SIZE=16
-PROCESS_LEVEL= "l1c"
-LEARN_TYPE = "csl"
-PATIENCE =5
-NUM_CHANNELS = 10
-NUM_CLASSES = 10
+PROCESS_LEVEL="l1c"
+LEARN_TYPE="csl"
+PATIENCE=5
+NUM_CHANNELS=10
+NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
-EPOCHS=5
+EPOCHS=100
 
 echo "Starting script"
 echo $(date)

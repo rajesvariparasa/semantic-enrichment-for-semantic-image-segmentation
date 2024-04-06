@@ -1,0 +1,19 @@
+name: torch_env
+channels:
+  - pytorch
+  - nvidia
+  - defaults 
+dependencies:
+  - python
+  - numpy
+  - pandas
+  - matplotlib
+  - pillow
+  - tqdm
+  - scikit-learn
+  - pytorch
+  - torchvision
+  - pytorch-cuda=11.8
+  - pip
+  - rasterio
+

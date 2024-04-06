@@ -52,15 +52,15 @@ class SiamDW_DataClass(Dataset):
 
 def prepare_loaders(input_dir, process_level, learn_type, batch_size):
 
-    train_data_path = os.path.join(input_dir, 'train')
-    val_data_path = os.path.join(input_dir, 'test')
-    metadata = pd.read_csv(os.path.join(train_data_path, 'metadata.csv'))
+    metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
+    train_data_path = os.path.join(input_dir, process_level, 'train')
+    val_data_path = os.path.join(input_dir, process_level, 'test')
     
     train_dataset = SiamDW_DataClass(data_path=train_data_path, metadata= metadata, 
                                      set ='train', learn_type = learn_type, process_level = process_level)
     val_dataset = SiamDW_DataClass(data_path = val_data_path, metadata = metadata, 
-                                   set = 'val', learn_type=learn_type, process_level=process_level)
+                                   set = 'test', learn_type=learn_type, process_level=process_level)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, drop_last=True, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, drop_last=True, shuffle=False)
     return train_loader, val_loader
