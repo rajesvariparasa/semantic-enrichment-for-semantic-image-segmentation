@@ -14,7 +14,7 @@ def train_epoch(model, data, batch_size, n_classes, optimizer, criterion, device
     num_batches = len(data)
     for _,batch in enumerate(tqdm(data, desc='Training', leave=False)): # for each batch
         #print(f"Batch {i}")
-        features, labels = batch
+        features, labels,_ = batch
         features, labels = features.to(device), labels.to(device)
         optimizer.zero_grad()
         outputs = model(features)
@@ -45,7 +45,7 @@ def validate_epoch(model, data,batch_size, n_classes, criterion, device):
         #data_with_progress = tqdm(data, desc='Validation', leave=False)
 
         for _,batch in enumerate(tqdm(data, desc='Validation', leave=False)):
-            features, labels = batch
+            features, labels,_ = batch
             features, labels = features.to(device), labels.to(device)
             outputs = model(features)
             labels, outputs = labels.view(batch_size,-1).long(), outputs.view(batch_size,n_classes,-1)
@@ -93,6 +93,7 @@ def train_model(model, train_data, val_data, batch_size, n_classes, optimizer, s
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
+                    # 'criterion': criterion,
                     'train_loss_history': train_loss_history,
                     'train_accuracy_history': train_accuracy_history,
                     'val_loss_history': val_loss_history,
@@ -108,11 +109,11 @@ def train_model(model, train_data, val_data, batch_size, n_classes, optimizer, s
                 break
         if scheduler is not None:
             scheduler.step(val_epoch_loss)
-
     train_duration = time.time() - start
     print(f"Training completed in {train_duration//60:.0f}m {train_duration % 60:.0f}s")
 
-    return train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history
+    
+    return model, train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history
 
 
 def save_training_curves(train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history, out_path):

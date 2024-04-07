@@ -21,7 +21,7 @@ fi
 set -o errexit -o pipefail -o nounset
 cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
-OUT_PATH="/share/projects/siamdl/TestRun1/outputs/"
+OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
@@ -30,7 +30,26 @@ NUM_CHANNELS=10
 NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
-EPOCHS=100
+EPOCHS=5
+REMARKS="Prototype run. Testing saving outputs and charts."
+
+# Create output directory
+mkdir -p $OUT_PATH
+
+# Save arguments to a file
+echo "Arguments passed to the script:" > $OUT_PATH/arguments.txt
+echo "Input Directory: $INPUT_DIR" >> $OUT_PATH/arguments.txt
+echo "Output Path: $OUT_PATH" >> $OUT_PATH/arguments.txt
+echo "Batch Size: $BATCH_SIZE" >> $OUT_PATH/arguments.txt
+echo "Process Level: $PROCESS_LEVEL" >> $OUT_PATH/arguments.txt
+echo "Learn Type: $LEARN_TYPE" >> $OUT_PATH/arguments.txt
+echo "Patience: $PATIENCE" >> $OUT_PATH/arguments.txt
+echo "Number of Channels: $NUM_CHANNELS" >> $OUT_PATH/arguments.txt
+echo "Number of Classes: $NUM_CLASSES" >> $OUT_PATH/arguments.txt
+echo "Learning Rate: $LR" >> $OUT_PATH/arguments.txt
+echo "Weight Decay: $WEIGHT_DECAY" >> $OUT_PATH/arguments.txt
+echo "Epochs: $EPOCHS" >> $OUT_PATH/arguments.txt
+echo "Remarks: $REMARKS" >> $OUT_PATH/arguments.txt
 
 echo "Starting script"
 echo $(date)

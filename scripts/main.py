@@ -5,6 +5,7 @@ import os
 from data_prep import prepare_loaders
 from train import train_model, save_training_curves
 from milesial_unet.unet_model import UNet
+from predict import save_predicted_files, save_cm_metrics
 
 def parse_args():
     parser = argparse.ArgumentParser(description='SIAM for Semantic Image Segmentation')
@@ -43,7 +44,8 @@ def main():
     print(f"Validation data: {len(val_loader.dataset)} samples")
     print(f"Number of batches in train: {len(train_loader)}")
     print(f"Number of batches in validation: {len(val_loader)}")
-    # Prepare output directory
+   
+    # Prepare output directory if it does not exist
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path)
 
@@ -54,7 +56,7 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
     
     # Train model
-    train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history = train_model(model = model, 
+    trained_model, train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history = train_model(model = model, 
                                                         train_data=train_loader, val_data = val_loader, batch_size =args.batch_size , n_classes=args.num_classes ,optimizer = optimizer, 
                                                         scheduler = scheduler, criterion = criterion, device = device, 
                                                         patience = args.patience, out_path =  args.out_path, epochs = args.epochs)
@@ -63,5 +65,9 @@ def main():
     save_training_curves(train_loss_history= train_loss_history, train_accuracy_history= train_accuracy_history, 
                          val_loss_history = val_loss_history, val_accuracy_history = val_accuracy_history, out_path = args.out_path)
 
+    # Save predicted files
+    avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, data= val_loader, device = device, out_path = args.out_path)
+    save_cm_metrics(avg_loss = avg_loss, overall_accuracy = overall_accuracy, cm = cm, class_names = class_names, out_path = args.out_path)
+    print("All done!")
 if __name__ == "__main__":
     main()

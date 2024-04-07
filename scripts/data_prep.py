@@ -47,7 +47,7 @@ class SiamDW_DataClass(Dataset):
         # if self.transform:
         #     feat = self.transform(feat)
             # label = self.transform(label)
-        return feat, label[5,:,:].long()
+        return feat, label[5,:,:].long(), metadata_set.iloc[idx, 0]
     
 
 def prepare_loaders(input_dir, process_level, learn_type, batch_size):
