@@ -72,6 +72,7 @@ def train_model(model, train_data, val_data, batch_size, n_classes, optimizer, s
     train_accuracy_history = []
     val_accuracy_history = []
     model_out_path = os.path.join(out_path, 'best_model.pth')
+    patience_counter = 0
 
     for epoch in range(epochs):
         #print(f"Epoch {epoch+1}/{epochs} started")
@@ -84,7 +85,9 @@ def train_model(model, train_data, val_data, batch_size, n_classes, optimizer, s
         train_accuracy_history.append(train_epoch_accuracy)
         val_accuracy_history.append(val_epoch_accuracy)
 
-        patience_counter = 0
+        if scheduler is not None:
+            scheduler.step(val_epoch_loss)
+        
         if val_epoch_loss < min_val_loss:
             min_val_loss = val_epoch_loss
             
@@ -104,11 +107,10 @@ def train_model(model, train_data, val_data, batch_size, n_classes, optimizer, s
             print("Model saved") # saves the last best model, overwrites the previous best one
         else:
             patience_counter += 1
-            if patience_counter == patience:
+            if patience_counter > patience:
                 print(f"Early stopping at epoch {epoch}")
                 break
-        if scheduler is not None:
-            scheduler.step(val_epoch_loss)
+
     train_duration = time.time() - start
     print(f"Training completed in {train_duration//60:.0f}m {train_duration % 60:.0f}s")
 
