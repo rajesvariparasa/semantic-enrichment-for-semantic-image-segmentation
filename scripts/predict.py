@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import tqdm
+from tqdm import tqdm
 import pandas as pd
 
 def save_predicted_files(model, data, batch_size, n_classes, criterion, device, out_path):
@@ -39,10 +39,12 @@ def save_predicted_files(model, data, batch_size, n_classes, criterion, device, 
 
 def save_cm_metrics(avg_loss, overall_accuracy, cm, class_names, out_path):
     cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] # normalize confusion matrix
-    cm = np.nan_to_num(cm, nan=0)
+    cm = np.round(np.nan_to_num(cm, nan=0),2)
 
+    fig, ax = plt.subplots(figsize=(8,8))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
-    disp.plot(cmap=plt.cm.Blues)
+    disp.plot(ax=ax)
+    # resize the matrix cells to fit the values
     disp.ax_.set_title(f'Average Loss: {avg_loss:.4f}, Overall Accuracy: {overall_accuracy:.4f}')
     plt.savefig(os.path.join(out_path, 'confusion_matrix.png'))
     plt.close()

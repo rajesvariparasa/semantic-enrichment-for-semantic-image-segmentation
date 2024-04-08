@@ -30,8 +30,8 @@ NUM_CHANNELS=10
 NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
-EPOCHS=5
-REMARKS="Prototype run. Testing saving outputs and charts."
+EPOCHS=100
+REMARKS="Train run. After normalizing the data."
 
 # Create output directory
 mkdir -p $OUT_PATH

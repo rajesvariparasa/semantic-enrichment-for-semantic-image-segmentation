@@ -66,7 +66,9 @@ def main():
                          val_loss_history = val_loss_history, val_accuracy_history = val_accuracy_history, out_path = args.out_path)
 
     # Save predicted files
-    avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, data= val_loader, device = device, out_path = args.out_path)
+    avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, 
+                                        data= val_loader, device = device, out_path = args.out_path,
+                                        batch_size = args.batch_size, n_classes = args.num_classes, criterion = criterion)
     save_cm_metrics(avg_loss = avg_loss, overall_accuracy = overall_accuracy, cm = cm, class_names = class_names, out_path = args.out_path)
     print("All done!")
 if __name__ == "__main__":
