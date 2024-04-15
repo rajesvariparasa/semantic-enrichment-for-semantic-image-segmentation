@@ -15,13 +15,12 @@ def train_epoch(model, data, batch_size, n_classes, optimizer, criterion, device
     for _,batch in enumerate(tqdm(data, desc='Training', leave=False)): # for each batch
         #print(f"Batch {i}")
         features, labels,_ = batch
-        features, labels = features.to(device), labels.to(device)
+        dw_band = 5 # 6th band is the DW band
+        features, labels = features.to(device), labels[:,dw_band,:,:].to(device)
         optimizer.zero_grad()
         outputs = model(features)
-        #print(f"before {outputs.shape}, {labels.shape}")
         outputs = outputs.view(batch_size,n_classes,-1)
         labels = labels.view(batch_size,-1).long()
-        #print(f"after {outputs.shape}, {labels.shape}")
 
         loss = criterion(outputs, labels) # loss
         loss.backward()
@@ -46,6 +45,8 @@ def validate_epoch(model, data,batch_size, n_classes, criterion, device):
 
         for _,batch in enumerate(tqdm(data, desc='Validation', leave=False)):
             features, labels,_ = batch
+            dw_band = 5 # 6th band is the DW band
+            features, labels = features.to(device), labels[:,dw_band,:,:].to(device)
             features, labels = features.to(device), labels.to(device)
             outputs = model(features)
             labels, outputs = labels.view(batch_size,-1).long(), outputs.view(batch_size,n_classes,-1)

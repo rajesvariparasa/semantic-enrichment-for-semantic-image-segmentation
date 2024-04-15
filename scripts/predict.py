@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from tqdm import tqdm
 import pandas as pd
+from PIL import Image
 
 def save_predicted_files(model, data, batch_size, n_classes, criterion, device, out_path):
     predictions_dir = os.path.join(out_path, 'predictions') # prepare directory for prediction files
@@ -19,13 +20,16 @@ def save_predicted_files(model, data, batch_size, n_classes, criterion, device, 
     with torch.no_grad():
         for _, batch in enumerate(tqdm(data, desc='Predicting', leave=False)):
             features, labels, PIDs = batch
-            features, labels = features.to(device), labels.to(device)
+            dw_band = 5 # 6th band is the DW band
+            features, labels = features.to(device), labels[:,dw_band,:,:].to(device)
             outputs = model(features)
             preds = torch.argmax(outputs, dim=1)
             for j in range(preds.shape[0]):
                 pred = preds[j].cpu().numpy()
                 PID = PIDs[j]
-                np.save(os.path.join(predictions_dir, f'{PID}.npy'), pred)
+                #np.save(os.path.join(predictions_dir, f'{PID}.npy'), pred)
+                pred = Image.fromarray(pred.astype(np.uint8))
+                pred.save(os.path.join(predictions_dir, f'{PID}.png'))
 
             labels, outputs, preds = labels.view(batch_size,-1).long(), outputs.view(batch_size,n_classes,-1), preds.view(batch_size,-1)
             loss = criterion(outputs, labels)

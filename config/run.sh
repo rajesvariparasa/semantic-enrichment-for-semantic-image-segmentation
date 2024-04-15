@@ -22,16 +22,16 @@ set -o errexit -o pipefail -o nounset
 cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/"
+INPUT_TYPE="siam_18"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
-PATIENCE=5
-NUM_CHANNELS=10
+PATIENCE=20
 NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
-EPOCHS=100
-REMARKS="Train run. After normalizing the data."
+EPOCHS=80
+REMARKS="Train run. After normalizing the data. Changing scheduler to ExponentialLR. (Changed output format to .png from .npy)"
 
 # Create output directory
 mkdir -p $OUT_PATH
@@ -40,11 +40,11 @@ mkdir -p $OUT_PATH
 echo "Arguments passed to the script:" > $OUT_PATH/arguments.txt
 echo "Input Directory: $INPUT_DIR" >> $OUT_PATH/arguments.txt
 echo "Output Path: $OUT_PATH" >> $OUT_PATH/arguments.txt
+echo "Input Type: $INPUT_TYPE" >> $OUT_PATH/arguments.txt
 echo "Batch Size: $BATCH_SIZE" >> $OUT_PATH/arguments.txt
 echo "Process Level: $PROCESS_LEVEL" >> $OUT_PATH/arguments.txt
 echo "Learn Type: $LEARN_TYPE" >> $OUT_PATH/arguments.txt
 echo "Patience: $PATIENCE" >> $OUT_PATH/arguments.txt
-echo "Number of Channels: $NUM_CHANNELS" >> $OUT_PATH/arguments.txt
 echo "Number of Classes: $NUM_CLASSES" >> $OUT_PATH/arguments.txt
 echo "Learning Rate: $LR" >> $OUT_PATH/arguments.txt
 echo "Weight Decay: $WEIGHT_DECAY" >> $OUT_PATH/arguments.txt
@@ -57,11 +57,11 @@ echo $(date)
 python main.py \
     --input_dir $INPUT_DIR \
     --out_path $OUT_PATH \
+    --input_type $INPUT_TYPE \
     --batch_size $BATCH_SIZE \
     --process_level $PROCESS_LEVEL \
     --learn_type $LEARN_TYPE \
     --patience $PATIENCE \
-    --num_channels $NUM_CHANNELS \
     --num_classes $NUM_CLASSES \
     --lr $LR \
     --weight_decay $WEIGHT_DECAY \
