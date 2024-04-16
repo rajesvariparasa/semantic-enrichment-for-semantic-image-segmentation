@@ -2,8 +2,9 @@ import argparse
 import torch
 import os
 
-from data_prep import prepare_loaders
-from train import train_model, save_training_curves
+from data_prep import generate_stratified_folds, prepare_test_loader
+#from train import train_model, save_training_curves
+from train_cross_val import train_model_cross_val, save_training_curves
 from milesial_unet.unet_model import UNet
 from predict import save_predicted_files, save_cm_metrics
 
@@ -25,14 +26,15 @@ def parse_args():
 
 def main():
     args = parse_args()
-    #device = torch.device('cpu')
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
     print(f"Device: {device}")
 
+    big_outputs_path = os.path.join(os.path.split(args.out_path)[0], 'model_outputs/')
+
     if args.input_type == 's2':
-        num_channels = 10 # Sentinel-2 spectral bands
+        num_channels = 10       # Sentinel-2 spectral bands
     elif 'siam' in args.input_type:
-        num_channels = 3 # RGB channels
+        num_channels = 3        # RGB channels
     
     # Initialize model, optimizer, scheduler and loss function
     model = UNet(n_channels=num_channels, n_classes=args.num_classes) # Initialize model    
@@ -40,40 +42,35 @@ def main():
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95) # Initialize scheduler
     criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
     
-    # Prepare data loaders
-    train_loader, val_loader = prepare_loaders(input_dir=args.input_dir, 
-                                            process_level = args.process_level,                                         
-                                            learn_type = args.learn_type, 
-                                            input_type = args.input_type,
-                                            batch_size= args.batch_size)
-    print(f"Train data: {len(train_loader.dataset)} samples")
-    print(f"Validation data: {len(val_loader.dataset)} samples")
-    print(f"Number of batches in train: {len(train_loader)}")
-    print(f"Number of batches in validation: {len(val_loader)}")
+    # Prepare fold generator
+    kfold_generator = generate_stratified_folds(input_dir=args.input_dir, process_level=args.process_level, learn_type=args.learn_type, 
+                                                input_type= args.input_type, batch_size=args.batch_size)
    
-    for i in val_loader:
-        print(i[0][0])
-        break
-    # Prepare output directory if it does not exist
-    if not os.path.exists(args.out_path):
-        os.makedirs(args.out_path)
-
     # Train model
-    trained_model, train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history = train_model(model = model, 
-                                                        train_data=train_loader, val_data = val_loader, batch_size =args.batch_size , 
+    trained_model, train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history = train_model_cross_val(model = model, 
+                                                        generator=kfold_generator, batch_size =args.batch_size , 
                                                         n_classes=args.num_classes ,optimizer = optimizer, 
                                                         scheduler = scheduler, criterion = criterion, device = device, 
-                                                        patience = args.patience, out_path =  args.out_path, epochs = args.epochs)
+                                                        patience = args.patience, out_path =  big_outputs_path, epochs = args.epochs)
     
     # Save training curves
     save_training_curves(train_loss_history= train_loss_history, train_accuracy_history= train_accuracy_history, 
                          val_loss_history = val_loss_history, val_accuracy_history = val_accuracy_history, out_path = args.out_path)
 
+    #---- Testing script from below ----- 
+
+    # Prepare test loader 
+    test_loader = prepare_test_loader(input_dir=args.input_dir, process_level=args.process_level, learn_type=args.learn_type, 
+                                    input_type= args.input_type, batch_size=args.batch_size)
     # Save predicted files
     avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, 
-                                        data= val_loader, device = device, out_path = args.out_path,
+                                        data= test_loader, device = device, out_path = big_outputs_path,
                                         batch_size = args.batch_size, n_classes = args.num_classes, criterion = criterion)
+    
+    # Save class-wise metrics
     save_cm_metrics(avg_loss = avg_loss, overall_accuracy = overall_accuracy, cm = cm, class_names = class_names, out_path = args.out_path)
+    
     print("All done!")
+
 if __name__ == "__main__":
     main()

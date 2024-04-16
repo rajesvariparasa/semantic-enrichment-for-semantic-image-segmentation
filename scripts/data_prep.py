@@ -7,28 +7,33 @@ import torch
 import rasterio as rio
 from torchvision import transforms
 import csv
+from sklearn.model_selection import StratifiedKFold
 
 class SiamDW_DataClass(Dataset):
-    def __init__(self, data_path, metadata, set, learn_type, process_level, input_type, transform=None):
+    def __init__(self, data_path, metadata, set, learn_type, process_level, input_type, lis_patch_ids = None, transform=None):
     # in metadata dataframe, select patches with set as train 
         self.data_path = data_path
-        self.metadata = metadata
         self.set = set
         self.transform = transform
         self.process_level = process_level
         self.learn_type = learn_type
         self.input_type = input_type
+        self.metadata = metadata
+        # subset based on set (train/test) and learn_type (csl/ssl)
+        self.metadata_set = self.metadata[(self.metadata['set']==self.set) & (self.metadata['learn_type']==self.learn_type)]
+        
+        # subset again if list of patch_ids is given
+        if lis_patch_ids is not None:
+            self.metadata_set = self.metadata_set[self.metadata_set['patch_id'].isin(lis_patch_ids)]
 
     def __len__(self):
-        return len(self.metadata[(self.metadata['set']==self.set) & (self.metadata['learn_type']==self.learn_type)])
+        return len(self.metadata_set)
 
     def __getitem__(self, idx):
-        metadata_set = self.metadata[(self.metadata['set']==self.set) & (self.metadata['learn_type']==self.learn_type)]
-        
         # Load label
         label_fname= (f"{self.process_level}_"
                 f"{self.learn_type}_"
-                f"{metadata_set.iloc[idx, 0]}_"
+                f"{self.metadata_set.iloc[idx, 0]}_"
                 f"label.tif")
         
         label_p = os.path.join(self.data_path, label_fname)
@@ -39,7 +44,7 @@ class SiamDW_DataClass(Dataset):
         if self.input_type == 's2':
             feat_fname= (f"{self.process_level}_"
                         f"{self.learn_type}_"
-                        f"{metadata_set.iloc[idx, 0]}_"
+                        f"{self.metadata_set.iloc[idx, 0]}_"
                         f"feats.tif")
 
             feat_p = os.path.join(self.data_path, feat_fname)
@@ -52,11 +57,22 @@ class SiamDW_DataClass(Dataset):
 
         feat = torch.from_numpy(feat).to(torch.float32)
         label = torch.from_numpy(label).to(torch.float32)
-        if self.transform: # same transform for both siam and s2 currently (normalise based on bands in patch)
+        if self.transform is not None: # same transform for both siam and s2 currently (normalise based on bands in patch)
             feat = self.transform(feat)         
 
-        return feat, label.long(), metadata_set.iloc[idx, 0]
-
+        return feat, label.long(), self.metadata_set.iloc[idx, 0] #get the patch id to save results
+    
+    def read_legend(self, legend_path):
+        with open(legend_path, mode='r') as file:
+            reader = csv.DictReader(file, delimiter=',')  
+            rgb_dict = {}
+            for row in reader:
+                #print(row)
+                value = int(row['value'])
+                rgb = tuple(map(int, row['rgb'][1:-1].split(',')))  # Convert "(r, g, b)" string to tuple
+                rgb_dict[value] = rgb
+        return rgb_dict
+    
     def convert_to_rgb(self, label, input_type):
         #path to legend csv
         file_name = 'lgd_' + input_type + '.csv'
@@ -79,21 +95,7 @@ class SiamDW_DataClass(Dataset):
             rgb_image[2, label[band] == value] = rgb[2]
         return rgb_image
 
-    def read_legend(self, legend_path):
-        with open(legend_path, mode='r') as file:
-            reader = csv.DictReader(file, delimiter=',')  
-            rgb_dict = {}
-            for row in reader:
-                #print(row)
-                value = int(row['value'])
-                rgb = tuple(map(int, row['rgb'][1:-1].split(',')))  # Convert "(r, g, b)" string to tuple
-                rgb_dict[value] = rgb
-        return rgb_dict
-
 class NormalizeImage:
-    # def __init__(self):
-    #     super(NormalizeImage, self).__init__()
-
     def __call__(self, image):
         num_bands, _, _ = image.shape
         flattened_image = image.view(num_bands, -1)
@@ -110,18 +112,38 @@ class NormalizeImage:
         normalized_image = torch.clamp((image - min_percentiles) / (max_percentiles - min_percentiles), 0, 1)
         return normalized_image
 
-def prepare_loaders(input_dir, process_level, learn_type, input_type, batch_size):
-
+def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, batch_size,train_pids,val_pids):
     metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
     train_data_path = os.path.join(input_dir, process_level, 'train')
-    val_data_path = os.path.join(input_dir, process_level, 'test')
+    #test_data_path = os.path.join(input_dir, process_level, 'test')
     data_transform = transforms.Compose([NormalizeImage()])
 
-    train_dataset = SiamDW_DataClass(data_path=train_data_path, metadata= metadata,transform = None,
-                                     set ='train', learn_type = learn_type, process_level = process_level, input_type = input_type)
-    val_dataset = SiamDW_DataClass(data_path = val_data_path, metadata = metadata, transform= None,
-                                   set = 'test', learn_type=learn_type, process_level=process_level, input_type=input_type)
+    args={'data_path':train_data_path, 'metadata':metadata, 'set':'train', 'learn_type':learn_type, 
+          'process_level':process_level, 'input_type':input_type, 'transform':data_transform}
+    
+    train_dataset = SiamDW_DataClass(lis_patch_ids=train_pids, **args)
+    val_dataset = SiamDW_DataClass(lis_patch_ids=val_pids, **args)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, drop_last=True, shuffle=False)
     return train_loader, val_loader
+
+def generate_stratified_folds(input_dir, process_level, learn_type, input_type, batch_size, n_splits=5):
+    # look through input_dir and look for test_files_{i}.pkl files
+    for i in range(n_splits):
+        train_pids = pd.read_pickle(os.path.join(input_dir, f'train_files_{i}.pkl'))
+        val_pids = pd.read_pickle(os.path.join(input_dir, f'val_files_{i}.pkl'))
+        train_loader, val_loader = prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, batch_size,train_pids,val_pids)
+        yield train_loader, val_loader
+
+def prepare_test_loader(input_dir, process_level, learn_type, input_type, batch_size):
+    metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
+    test_data_path = os.path.join(input_dir, process_level, 'test')
+    data_transform = transforms.Compose([NormalizeImage()])
+
+    args={'data_path':test_data_path, 'metadata':metadata, 'set':'test', 'learn_type':learn_type, 
+          'process_level':process_level, 'input_type':input_type, 'transform':data_transform}
+    
+    test_dataset = SiamDW_DataClass(**args)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, drop_last=True, shuffle=False)
+    return test_loader

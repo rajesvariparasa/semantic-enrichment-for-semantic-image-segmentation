@@ -21,8 +21,8 @@ fi
 set -o errexit -o pipefail -o nounset
 cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
-OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/"
-INPUT_TYPE="siam_18"
+OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/quickview/"
+INPUT_TYPE="s2"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
@@ -31,7 +31,7 @@ NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
 EPOCHS=80
-REMARKS="Train run. After normalizing the data. Changing scheduler to ExponentialLR. (Changed output format to .png from .npy)"
+REMARKS="Cross validation implemented"
 
 # Create output directory
 mkdir -p $OUT_PATH
