@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --gres gpu:1
-#SBATCH --constraint a6000
-#SBATCH --constraint m48
+#SBATCH --constraint v100
+#SBATCH --constraint m16
 #SBATCH --mem 32G
 #SBATCH --time 10:00:00
 #SBATCH --partition shortrun
