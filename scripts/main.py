@@ -26,10 +26,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
+    device = torch.device('cpu')
+    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
     print(f"Device: {device}")
 
+    # Create output directory for storage heavy files. For smaller outputs, the default out_path is used.
     big_outputs_path = os.path.join(os.path.split(args.out_path)[0], 'model_outputs/')
+    if not os.path.exists(big_outputs_path):
+        os.makedirs(big_outputs_path, exist_ok=True)
 
     if args.input_type == 's2':
         num_channels = 10       # Sentinel-2 spectral bands
@@ -43,13 +47,14 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
     
     # Prepare fold generator
-    kfold_generator = generate_stratified_folds(input_dir=args.input_dir, process_level=args.process_level, learn_type=args.learn_type, 
-                                                input_type= args.input_type, batch_size=args.batch_size)
+    base_args = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':args.learn_type, 
+                      'input_type':args.input_type, 'batch_size':args.batch_size}
+    
    
     # Train model
     trained_model, train_loss_history, train_accuracy_history, val_loss_history, val_accuracy_history = train_model_cross_val(model = model, 
-                                                        generator=kfold_generator, batch_size =args.batch_size , 
-                                                        n_classes=args.num_classes ,optimizer = optimizer, 
+                                                        generator_func=generate_stratified_folds, generator_args = base_args,
+                                                        batch_size =args.batch_size , n_classes=args.num_classes ,optimizer = optimizer, 
                                                         scheduler = scheduler, criterion = criterion, device = device, 
                                                         patience = args.patience, out_path =  big_outputs_path, epochs = args.epochs)
     
@@ -60,8 +65,7 @@ def main():
     #---- Testing script from below ----- 
 
     # Prepare test loader 
-    test_loader = prepare_test_loader(input_dir=args.input_dir, process_level=args.process_level, learn_type=args.learn_type, 
-                                    input_type= args.input_type, batch_size=args.batch_size)
+    test_loader = prepare_test_loader(**base_args)
     # Save predicted files
     avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, 
                                         data= test_loader, device = device, out_path = big_outputs_path,

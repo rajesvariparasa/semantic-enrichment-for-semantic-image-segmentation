@@ -75,7 +75,7 @@ def fit_fold(generator,model,batch_size, n_classes, optimizer, criterion, device
     print("Fold Accuracies: ", train_accuracy_history, val_accuracy_history)
     return np.mean(train_loss_history), np.mean(val_loss_history), np.mean(train_accuracy_history), np.mean(val_accuracy_history)
 
-def train_model_cross_val(model, generator,batch_size, n_classes, optimizer, scheduler, criterion, device, patience,out_path, epochs=10):
+def train_model_cross_val(model, generator_func,generator_args, batch_size, n_classes, optimizer, scheduler, criterion, device, patience,out_path, epochs=10):
     start = time.time()
     model = model.to(device)
     min_val_loss = np.inf
@@ -89,6 +89,7 @@ def train_model_cross_val(model, generator,batch_size, n_classes, optimizer, sch
 
     for epoch in range(epochs):
 
+        generator = generator_func(**generator_args) #reset generator for each epoch
         train_epoch_loss, train_epoch_accuracy, val_epoch_loss, val_epoch_accuracy = fit_fold(generator, model, batch_size, n_classes, optimizer, criterion, device)
         print(f"Epoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Train Accuracy: {train_epoch_accuracy:.4f} , Val Loss: {val_epoch_loss:.4f}, Val Accuracy: {val_epoch_accuracy:.4f}")
     
