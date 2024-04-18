@@ -21,15 +21,15 @@ cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/quickview/"
 INPUT_TYPE="s2"
-BATCH_SIZE=16
+BATCH_SIZE=8
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
-PATIENCE=20
+PATIENCE=5
 NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
-EPOCHS=80
-REMARKS="Cross validation implemented"
+EPOCHS=60
+REMARKS="Cross validation implemented. Taking mean of folds for losses and accuracies."
 
 # Create output directory
 mkdir -p $OUT_PATH
