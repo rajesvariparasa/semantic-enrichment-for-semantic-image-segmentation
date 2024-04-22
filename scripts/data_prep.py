@@ -55,9 +55,11 @@ class SiamDW_DataClass(Dataset):
         elif 'siam' in self.input_type:
             feat = self.convert_to_rgb(label, self.input_type)
 
+        # Convert to torch tensors of type float32
         feat = torch.from_numpy(feat).to(torch.float32)
         label = torch.from_numpy(label).to(torch.float32)
-        if self.transform is not None: # same transform for both siam and s2 currently (normalise based on bands in patch)
+        
+        if self.transform is not None: 
             feat = self.transform(feat)         
 
         return feat, label.long(), self.metadata_set.iloc[idx, 0] #get the patch id to save results
@@ -96,7 +98,19 @@ class SiamDW_DataClass(Dataset):
         return rgb_image
 
 class NormalizeImage:
+
+    def __init__(self, input_type):
+        super(NormalizeImage, self).__init__()
+        self.input_type = input_type
+        
     def __call__(self, image):
+        if self.input_type == 's2':
+            return self.normalize_s2(image)
+        elif 'siam' in self.input_type:
+            return self.normalize_siam(image)
+        
+    def normalize_s2(self, image):
+        # Normalize image to the 1st and 99th percentile
         num_bands, _, _ = image.shape
         flattened_image = image.view(num_bands, -1)
 
@@ -104,19 +118,24 @@ class NormalizeImage:
         min_percentiles = torch.kthvalue(flattened_image, int(flattened_image.size(1) * 0.01), dim=1).values
         max_percentiles = torch.kthvalue(flattened_image, int(flattened_image.size(1) * 0.99), dim=1).values
 
-        # Reshape percentiles to have shape (num_bands, 1, 1)
+        # Reshape percentiles to have shape (num_bands, 1, 1). This is necessary for element-wise operations
         min_percentiles = min_percentiles[:, None, None]
         max_percentiles = max_percentiles[:, None, None]
 
         # Clip image values to the range defined by percentiles
         normalized_image = torch.clamp((image - min_percentiles) / (max_percentiles - min_percentiles), 0, 1)
         return normalized_image
+    
+    def normalize_siam(self, image):
+        # divide all three bands by 255
+        normalized_image = image/255.0
+        return normalized_image
 
 def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, batch_size,train_pids,val_pids):
     metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
     train_data_path = os.path.join(input_dir, process_level, 'train')
-    #test_data_path = os.path.join(input_dir, process_level, 'test')
-    data_transform = transforms.Compose([NormalizeImage()])
+
+    data_transform = transforms.Compose([NormalizeImage(input_type=input_type)])
 
     args={'data_path':train_data_path, 'metadata':metadata, 'set':'train', 'learn_type':learn_type, 
           'process_level':process_level, 'input_type':input_type, 'transform':data_transform}
@@ -128,7 +147,7 @@ def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, b
     val_loader = DataLoader(val_dataset, batch_size=batch_size, drop_last=True, shuffle=False)
     return train_loader, val_loader
 
-def generate_stratified_folds(input_dir, process_level, learn_type, input_type, batch_size, n_splits=5):
+def generate_stratified_folds(input_dir, process_level, learn_type, input_type, batch_size, n_splits=3):
     # look through input_dir and look for test_files_{i}.pkl files
     for i in range(n_splits):
         train_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_train_files_{i}.pkl'))
@@ -139,7 +158,8 @@ def generate_stratified_folds(input_dir, process_level, learn_type, input_type, 
 def prepare_test_loader(input_dir, process_level, learn_type, input_type, batch_size):
     metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
     test_data_path = os.path.join(input_dir, process_level, 'test')
-    data_transform = transforms.Compose([NormalizeImage()])
+
+    data_transform = transforms.Compose([NormalizeImage(input_type=input_type)])
 
     args={'data_path':test_data_path, 'metadata':metadata, 'set':'test', 'learn_type':learn_type, 
           'process_level':process_level, 'input_type':input_type, 'transform':data_transform}

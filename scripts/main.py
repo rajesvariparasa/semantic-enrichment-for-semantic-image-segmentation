@@ -2,11 +2,11 @@ import argparse
 import torch
 import os
 
+from milesial_unet.unet_model import UNet
 from data_prep import generate_stratified_folds, prepare_test_loader
 #from train import train_model, save_training_curves
-from train_cross_val import train_model_cross_val, save_curves
-from milesial_unet.unet_model import UNet
-from predict import save_predicted_files, save_cm_metrics
+from train_cross_val import fit_kfolds, save_training_curves
+from predict import predict
 
 def parse_args():
     parser = argparse.ArgumentParser(description='SIAM for Semantic Image Segmentation')
@@ -31,7 +31,7 @@ def main():
     print(f"Device: {device}")
 
     # Create output directory for storage heavy files. For smaller outputs, the default out_path is used.
-    big_outputs_path = os.path.join(os.path.split(args.out_path)[0], 'model_outputs/')
+    big_outputs_path = os.path.join(os.path.split(os.path.split(args.out_path)[0])[0], 'model_outputs/')
     if not os.path.exists(big_outputs_path):
         os.makedirs(big_outputs_path, exist_ok=True)
 
@@ -41,37 +41,51 @@ def main():
         num_channels = 3        # RGB channels
     
     # Initialize model, optimizer, scheduler and loss function
-    model = UNet(n_channels=num_channels, n_classes=args.num_classes) # Initialize model    
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay) # Initialize optimizer
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95) # Initialize scheduler
+    models = [UNet(n_channels=num_channels, n_classes=args.num_classes),
+              UNet(n_channels=num_channels, n_classes=args.num_classes),
+              UNet(n_channels=num_channels, n_classes=args.num_classes)] # Initialize model    
+    optimizers = [torch.optim.Adam(models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
+                  torch.optim.Adam(models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
+                  torch.optim.Adam(models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
+    schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=0.95),
+                  torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=0.95),
+                  torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=0.95)] # Initialize scheduler
     criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
     
     # Prepare loader arguments - same for train folds and test set
     base_args = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':args.learn_type, 
                       'input_type':args.input_type, 'batch_size':args.batch_size}
    
+    generator = generate_stratified_folds(**base_args)
+
     # Train model
-    trained_model,epoch_metrics, folds_metrics = train_model_cross_val(model = model, generator_func=generate_stratified_folds, generator_args = base_args,
-                                                        batch_size =args.batch_size , n_classes=args.num_classes ,optimizer = optimizer, 
-                                                        scheduler = scheduler, criterion = criterion, device = device, 
-                                                        patience = args.patience, out_path =  big_outputs_path, epochs = args.epochs)
+
+    model_args = {'batch_size': args.batch_size,'patience': args.patience,'criterion': criterion, 
+                  'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
     
+    trained_models, fold_histories, fold_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
+                                                                                schedulers=schedulers, n_splits=3, **model_args)
+    
+    # Print results
+    print("Best epoch metrics for each fold: ", fold_metrics)
+    print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics, "\n")
+
     # Save training curves
-    save_curves(epoch_metrics = epoch_metrics, folds_metrics = folds_metrics, out_path = args.out_path)
+    save_training_curves(fold_histories=fold_histories, fold_metrics=fold_metrics,
+                         cross_val_metrics=cross_val_metrics, out_path= args.out_path)
     
     #---- Testing script from below ----- 
 
     # Prepare test loader 
     test_loader = prepare_test_loader(**base_args)
     
-    # Save predicted files
-    avg_loss, overall_accuracy, cm, class_names =save_predicted_files(model = trained_model, 
-                                        data= test_loader, device = device, out_path = big_outputs_path,
-                                        batch_size = args.batch_size, n_classes = args.num_classes, criterion = criterion)
-    
-    # Save class-wise metrics
-    save_cm_metrics(avg_loss = avg_loss, overall_accuracy = overall_accuracy, cm = cm, class_names = class_names, out_path = args.out_path)
-    
+    # Save prediction files and all DW calcs: confusion matrices, class metrics, losses and accuracies
+    final_test_metrics =predict(trained_models = trained_models, data=test_loader, 
+                                batch_size=args.batch_size, n_classes=args.num_classes, 
+                                criterion=criterion, device=device, out_paths=(big_outputs_path, args.out_path))
+
+    print("The performance of the ensemble model on the test set is as follows:")
+    print(final_test_metrics)
     print("All done!")
 
 if __name__ == "__main__":
