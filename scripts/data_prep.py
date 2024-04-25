@@ -84,13 +84,13 @@ class SiamDW_DataClass(Dataset):
         rgb_image = np.zeros((3, label.shape[1], label.shape[2]), dtype=np.uint8)
         # band 2 in label is siam_18, band 3 is siam_33, band 4 is siam_48, band 5 is siam_96
         if input_type == 'siam_18':
-            band = 2
+            band = 1
         elif input_type == 'siam_33':
-            band = 3
+            band = 2
         elif input_type == 'siam_48':
-            band = 4
+            band = 3
         elif input_type == 'siam_96':
-            band = 5
+            band = 4
         for value, rgb in rgb_dict.items():
             rgb_image[0, label[band] == value] = rgb[0]
             rgb_image[1, label[band] == value] = rgb[1]

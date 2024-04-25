@@ -22,7 +22,7 @@ set -o errexit -o pipefail -o nounset
 cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/quickview/"
-INPUT_TYPE="s2"
+INPUT_TYPE="siam_96"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
@@ -59,15 +59,15 @@ monitor_gpu() {
     
     # Check if the file exists, if not, add headers
     if [ ! -f "$output_file" ]; then
-        echo "datetime,temperature,power_draw" > "$output_file"
+        echo "datetime,utilization_PC,temperature_C,power_draw_W" > "$output_file"
     fi
     
     while true; do
-        gpu_info=$(srun -s --jobid $SLURM_JOBID --pty nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
+        gpu_info=$(srun -s --jobid $SLURM_JOBID nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
         gpu_utilization=$(echo $gpu_info | awk '{print $1}')
         gpu_temperature=$(echo $gpu_info | awk '{print $2}')
         power_draw=$(echo $gpu_info | awk '{print $3}')
-        echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_temperature,$power_draw" >> "$output_file"
+        echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_utilization,$gpu_temperature,$power_draw" >> "$output_file"
         sleep 10
     done
 }

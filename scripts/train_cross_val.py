@@ -161,10 +161,10 @@ def save_training_curves(fold_histories, fold_metrics, cross_val_metrics, out_pa
     # plot training and validation losses and accuracies of all three folds. One plot for losses and one for accuracies side by side
     fig, axs = plt.subplots(1, 2, figsize=(15, 5))
     for fold, history in fold_histories.items():
-        axs[0].plot(history['train_loss_history'], label=fold)
-        axs[0].plot(history['val_loss_history'], label=fold)
-        axs[1].plot(history['train_accuracy_history'], label=fold)
-        axs[1].plot(history['val_accuracy_history'], label=fold)
+        axs[0].plot(history['train_loss_history'], label=f"{fold} train_loss_history")
+        axs[0].plot(history['val_loss_history'], label=f"{fold} val_loss_history")
+        axs[1].plot(history['train_accuracy_history'], label=  f"{fold} train_accuracy_history")
+        axs[1].plot(history['val_accuracy_history'], label=  f"{fold} val_accuracy_history")
 
     axs[0].set_title('Losses')
     axs[0].set_xlabel('Epoch')
