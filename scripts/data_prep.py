@@ -82,7 +82,7 @@ class SiamDW_DataClass(Dataset):
         legend_path = os.path.join(legend_path, 'legends',file_name)
         rgb_dict = self.read_legend(legend_path)
         rgb_image = np.zeros((3, label.shape[1], label.shape[2]), dtype=np.uint8)
-        # band 2 in label is siam_18, band 3 is siam_33, band 4 is siam_48, band 5 is siam_96
+        # band 1 in label is siam_18, band 2 is siam_33, band 3 is siam_48, band 4 is siam_96
         if input_type == 'siam_18':
             band = 1
         elif input_type == 'siam_33':

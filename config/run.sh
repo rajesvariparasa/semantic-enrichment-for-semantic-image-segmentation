@@ -22,7 +22,7 @@ set -o errexit -o pipefail -o nounset
 cd scripts
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d_%H%M%S)/quickview/"
-INPUT_TYPE="siam_96"
+INPUT_TYPE="siam_18"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
@@ -31,7 +31,7 @@ NUM_CLASSES=11
 LR=0.0001
 WEIGHT_DECAY=1e-7
 EPOCHS=50
-REMARKS="Cross validation implemented. Ensemble of 3 models trained on 3 different folds."
+REMARKS="SIAM Index error: Rerun. Cross validation implemented. Ensemble of 3 models trained on 3 different folds."
 
 # Create output directory
 mkdir -p $OUT_PATH
