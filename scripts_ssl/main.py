@@ -51,8 +51,8 @@ def main():
     ssl_config_args = {'gamma_ssl':args.gamma_ssl, 'lr_ssl':0.0005, 'weight_decay_ssl':1e-7, 'epochs_ssl':2, 'patience_ssl':5} #only using gamma_ssl for now
 
     # Initialize SSL multitask-model UNet with resnet encoder
-    ssl_init_args = {'encoder_name':'resnet18', 'in_channels':10, 'classes':48, 'encoder_weights':None, 
-                     'activation':None, 'add_reconstruction_head':True}
+    ssl_init_args = {'encoder_name':'resnet18', 'in_channels':10, 'classes':49, 
+                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':True}
     ssl_models = [smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args)] # Initialize model
     
     optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),

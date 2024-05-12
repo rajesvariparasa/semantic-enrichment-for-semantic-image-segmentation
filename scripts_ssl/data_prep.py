@@ -59,8 +59,13 @@ class SiamDW_DataClass(Dataset):
         feat = torch.from_numpy(feat).to(torch.float32)
         label = torch.from_numpy(label).to(torch.float32)
 
-        # subtract 1 from last 4 bands of label to make it 0-indexed
+        # move up 255 to a value after max of the granularity, subtract 1 from last 4 bands i.e. siam bands of label to make it 0-indexed
         if self.learn_type == 'ssl':
+            #set 255 to value after max value in the band
+            label[1]=torch.where(label[1]==255, 19, label[1])
+            label[2]=torch.where(label[2]==255, 34, label[2])
+            label[3]=torch.where(label[3]==255, 49, label[3])
+            label[4]=torch.where(label[4]==255, 97, label[4])
             label[1:] = label[1:] - 1
         
         if self.feat_transform is not None: 

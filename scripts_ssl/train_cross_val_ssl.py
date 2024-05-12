@@ -10,8 +10,8 @@ import segmentation_models_pytorch as smp
 
 
 def load_best_model(path):
-    ssl_init_args = {'encoder_name':'resnet18', 'in_channels':10, 'classes':48, 'encoder_weights':None, 
-                     'activation':None, 'add_reconstruction_head':True}
+    ssl_init_args = {'encoder_name':'resnet18', 'in_channels':10, 'classes':49, 
+                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':True}
     model = smp.Unet(**ssl_init_args)
     ckpt = torch.load(path)
     model.load_state_dict(ckpt['model_state_dict'])
