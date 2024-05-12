@@ -3,7 +3,7 @@
 #SBATCH --gres gpu:1
 #SBATCH --constraint a6000
 #SBATCH --mem 32G
-#SBATCH --time 20:00:00
+#SBATCH --time 30:00:00
 #SBATCH --partition shortrun
 #SBATCH --output=siamdl%j.out
 #SBATCH --mail-type FAIL,END
@@ -19,20 +19,24 @@ fi
 
 
 set -o errexit -o pipefail -o nounset
-cd scripts
+cd scripts_ssl
 INPUT_TYPE="s2"
 INPUT_DIR="/share/projects/siamdl/data/small/"
-OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$INPUT_TYPE/quickview/"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
-LEARN_TYPE="csl"
 PATIENCE=20
 NUM_CLASSES=11
 LR=0.0005
 GAMMA=0.85
 WEIGHT_DECAY=1e-7
 EPOCHS=80
-REMARKS="Gamma and Patience tuned to 0.85 and 20 respectively."
+SSL_TYPE="single_recon"
+OMEGA=0.5
+GAMMA_SSL=0.8
+LOSS_SSL_1="DiceLoss"
+LOSS_SSL_2="L1Loss"
+OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
+REMARKS="SSL Run."
 
 # Create output directory
 mkdir -p $OUT_PATH
@@ -44,13 +48,17 @@ echo "Output Path: $OUT_PATH" >> $OUT_PATH/arguments.txt
 echo "Input Type: $INPUT_TYPE" >> $OUT_PATH/arguments.txt
 echo "Batch Size: $BATCH_SIZE" >> $OUT_PATH/arguments.txt
 echo "Process Level: $PROCESS_LEVEL" >> $OUT_PATH/arguments.txt
-echo "Learn Type: $LEARN_TYPE" >> $OUT_PATH/arguments.txt
+echo "Omega: $OMEGA" >> $OUT_PATH/arguments.txt
 echo "Patience: $PATIENCE" >> $OUT_PATH/arguments.txt
 echo "Number of Classes: $NUM_CLASSES" >> $OUT_PATH/arguments.txt
 echo "Learning Rate: $LR" >> $OUT_PATH/arguments.txt
-echo "Gamma: $GAMMA" >> $OUT_PATH/arguments.txt
 echo "Weight Decay: $WEIGHT_DECAY" >> $OUT_PATH/arguments.txt
 echo "Epochs: $EPOCHS" >> $OUT_PATH/arguments.txt
+echo "Gamma: $GAMMA" >> $OUT_PATH/arguments.txt
+echo "SSL Type: $SSL_TYPE" >> $OUT_PATH/arguments.txt
+echo "Gamma SSL: $GAMMA_SSL" >> $OUT_PATH/arguments.txt
+echo "SSL Loss 1: $LOSS_SSL_1" >> $OUT_PATH/arguments.txt
+echo "SSL Loss 2: $LOSS_SSL_2" >> $OUT_PATH/arguments.txt
 echo "Remarks: $REMARKS" >> $OUT_PATH/arguments.txt
 
 echo "Starting script"
@@ -79,18 +87,24 @@ monitor_gpu() {
 monitor_gpu &
 
 python main.py \
-    --input_dir $INPUT_DIR \
-    --out_path $OUT_PATH \
     --input_type $INPUT_TYPE \
+    --input_dir $INPUT_DIR \
     --batch_size $BATCH_SIZE \
     --process_level $PROCESS_LEVEL \
-    --learn_type $LEARN_TYPE \
     --patience $PATIENCE \
     --num_classes $NUM_CLASSES \
     --lr $LR \
     --gamma $GAMMA \
     --weight_decay $WEIGHT_DECAY \
-    --epochs $EPOCHS
+    --epochs $EPOCHS \
+    --ssl_type $SSL_TYPE \
+    --omega $OMEGA \
+    --gamma_ssl $GAMMA_SSL \
+    --loss_ssl_1 $LOSS_SSL_1 \
+    --loss_ssl_2 $LOSS_SSL_2 \
+    --out_path $OUT_PATH \
+    --remarks $REMARKS
+    
 
 # Stop GPU monitoring process
 trap "kill $!" EXIT

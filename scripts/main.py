@@ -20,6 +20,7 @@ def parse_args():
     #parser.add_argument('--num_channels', type=int, default=10, help='Number of channels in the dataset')
     parser.add_argument('--num_classes', type=int, default=11, help='Number of classes in the output task')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
+    parser.add_argument('--gamma', type=float, default=0.1, help='Gamma for learning rate scheduler')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
     return parser.parse_args()
@@ -47,9 +48,9 @@ def main():
     optimizers = [torch.optim.Adam(models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                   torch.optim.Adam(models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                   torch.optim.Adam(models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
-    schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=0.95),
-                  torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=0.95),
-                  torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=0.95)] # Initialize scheduler
+    schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=args.gamma),
+                  torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=args.gamma),
+                  torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=args.gamma)] # Initialize scheduler
     criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
     
     # Prepare loader arguments - same for train folds and test set

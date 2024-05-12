@@ -10,15 +10,16 @@ import csv
 from sklearn.model_selection import StratifiedKFold
 
 class SiamDW_DataClass(Dataset):
-    def __init__(self, data_path, metadata, set, learn_type, process_level, input_type, lis_patch_ids = None, transform=None):
+    def __init__(self, data_path, metadata, set, learn_type, process_level, input_type, lis_patch_ids = None, feat_transform=None, label_transform = None):
     # in metadata dataframe, select patches with set as train 
         self.data_path = data_path
         self.set = set
-        self.transform = transform
         self.process_level = process_level
         self.learn_type = learn_type
         self.input_type = input_type
         self.metadata = metadata
+        self.feat_transform = feat_transform
+        self.label_transform = label_transform
 
         # subset based on set (train/test) and learn_type (csl/ssl)
         self.metadata_set = self.metadata[(self.metadata['set']==self.set) & (self.metadata['learn_type']==self.learn_type)]
@@ -37,7 +38,6 @@ class SiamDW_DataClass(Dataset):
                 f"{self.learn_type}_"
                 f"{self.metadata_set.iloc[idx, 0]}_"
                 f"label.tif")
-        
         label_p = os.path.join(self.data_path, label_fname)
         with rio.open(label_p) as src:
             label = src.read().astype(np.int16)
@@ -48,7 +48,6 @@ class SiamDW_DataClass(Dataset):
                         f"{self.learn_type}_"
                         f"{self.metadata_set.iloc[idx, 0]}_"
                         f"feats.tif")
-
             feat_p = os.path.join(self.data_path, feat_fname)
             with rio.open(feat_p) as src:
                 feat = src.read().astype(np.int16)
@@ -59,9 +58,15 @@ class SiamDW_DataClass(Dataset):
         # Convert to torch tensors of type float32
         feat = torch.from_numpy(feat).to(torch.float32)
         label = torch.from_numpy(label).to(torch.float32)
+
+        # subtract 1 from last 4 bands of label to make it 0-indexed
+        if self.learn_type == 'ssl':
+            label[1:] = label[1:] - 1
         
-        if self.transform is not None: 
-            feat = self.transform(feat)         
+        if self.feat_transform is not None: 
+            feat = self.feat_transform(feat)     
+        if self.label_transform is not None:
+            label = self.label_transform(label)    # for padding 
 
         return feat, label.long(), self.metadata_set.iloc[idx, 0] #get the patch id to save results
     
@@ -156,10 +161,11 @@ def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, b
     metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
     train_data_path = os.path.join(input_dir, process_level, 'train')
 
-    data_transform = transforms.Compose([NormalizeImage(input_type=input_type)])
+    feat_transform = transforms.Compose([NormalizeImage(input_type=input_type), Padding((512, 512))])
+    label_transform = transforms.Compose([Padding((512, 512))])
 
-    args={'data_path':train_data_path, 'metadata':metadata, 'set':'train', 'learn_type':learn_type, 
-          'process_level':process_level, 'input_type':input_type, 'transform':data_transform}
+    args={'data_path':train_data_path, 'metadata':metadata, 'set':'train', 'learn_type':learn_type, 'process_level':process_level, 
+          'input_type':input_type, 'feat_transform':feat_transform, 'label_transform':label_transform}
     
     train_dataset = SiamDW_DataClass(lis_patch_ids=train_pids, **args)
     val_dataset = SiamDW_DataClass(lis_patch_ids=val_pids, **args)
@@ -170,6 +176,7 @@ def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, b
 
 def generate_stratified_folds(input_dir, process_level, learn_type, input_type, batch_size, n_splits=3):
     # look through input_dir and look for test_files_{i}.pkl files
+
     for i in range(n_splits):
         train_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_train_files_{i}.pkl'))
         val_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_val_files_{i}.pkl'))
@@ -180,10 +187,11 @@ def prepare_test_loader(input_dir, process_level, learn_type, input_type, batch_
     metadata = pd.read_csv(os.path.join(input_dir, 'meta_patches.csv'))
     test_data_path = os.path.join(input_dir, process_level, 'test')
 
-    data_transform = transforms.Compose([NormalizeImage(input_type=input_type)])
+    feat_transform = transforms.Compose([NormalizeImage(input_type=input_type), Padding((512, 512))])
+    label_transform = transforms.Compose([Padding((512, 512))])
 
-    args={'data_path':test_data_path, 'metadata':metadata, 'set':'test', 'learn_type':learn_type, 
-          'process_level':process_level, 'input_type':input_type, 'transform':data_transform}
+    args={'data_path':test_data_path, 'metadata':metadata, 'set':'test', 'learn_type':learn_type, 'process_level':process_level, 
+          'input_type':input_type, 'feat_transform':feat_transform, 'label_transform':label_transform}
     
     test_dataset = SiamDW_DataClass(**args)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, drop_last=True, shuffle=False)

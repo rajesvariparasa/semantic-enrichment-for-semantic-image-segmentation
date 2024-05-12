@@ -46,3 +46,29 @@ class UNet(nn.Module):
         self.up3 = torch.utils.checkpoint(self.up3)
         self.up4 = torch.utils.checkpoint(self.up4)
         self.outc = torch.utils.checkpoint(self.outc)
+
+
+# modification of the original code to include the latent representation
+
+# import torch.nn.functional as F
+
+# class Autoencoder(nn.Module):
+#     def __init__(self, n_channels, n_latent_channels):
+#         super(Autoencoder, self).__init__()
+#         self.n_channels = n_channels
+#         self.n_latent_channels = n_latent_channels
+
+#         # Encoder
+#         self.encoder = UNet(n_channels, n_latent_channels, bilinear=True)
+
+#         # Decoder
+#         self.decoder = UNet(n_latent_channels, n_channels, bilinear=True)
+
+#     def forward(self, x):
+#         # Encoder
+#         latent_representation = self.encoder(x)
+
+#         # Decoder
+#         reconstructed_output = self.decoder(latent_representation)
+
+#         return reconstructed_output, latent_representation
