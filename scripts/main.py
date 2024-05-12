@@ -2,11 +2,13 @@ import argparse
 import torch
 import os
 
-from milesial_unet.unet_model import UNet
+#from milesial_unet.unet_model import UNet
+import segmentation_models_pytorch as smp
 from data_prep import generate_stratified_folds, prepare_test_loader
 #from train import train_model, save_training_curves
 from train_cross_val import fit_kfolds, save_training_curves
 from predict import predict
+from loss import DiceLoss
 
 def parse_args():
     parser = argparse.ArgumentParser(description='SIAM for Semantic Image Segmentation')
@@ -27,6 +29,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(args)
     #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
     print(f"Device: {device}")
@@ -42,17 +45,23 @@ def main():
         num_channels = 3        # RGB channels
     
     # Initialize model, optimizer, scheduler and loss function
-    models = [UNet(n_channels=num_channels, n_classes=args.num_classes),
-              UNet(n_channels=num_channels, n_classes=args.num_classes),
-              UNet(n_channels=num_channels, n_classes=args.num_classes)] # Initialize model    
+    # models = [UNet(n_channels=num_channels, n_classes=args.num_classes),
+    #           UNet(n_channels=num_channels, n_classes=args.num_classes),
+    #           UNet(n_channels=num_channels, n_classes=args.num_classes)] # Initialize model -milesial unet
+    
+    csl_init_args = {'encoder_name':'resnet18', 'in_channels':num_channels, 'classes':args.num_classes, 
+                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
+    models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model -smp unet
+
     optimizers = [torch.optim.Adam(models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                   torch.optim.Adam(models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                   torch.optim.Adam(models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
     schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=args.gamma),
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=args.gamma),
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=args.gamma)] # Initialize scheduler
-    criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
-    
+    #criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
+    criterion = DiceLoss()  # Initialize loss function
+
     # Prepare loader arguments - same for train folds and test set
     base_args = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':args.learn_type, 
                       'input_type':args.input_type, 'batch_size':args.batch_size}
@@ -65,7 +74,7 @@ def main():
                   'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
     
     trained_models, fold_histories, fold_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
-                                                                                schedulers=schedulers, n_splits=3, **model_args)
+                                                                                schedulers=schedulers, n_splits=3, csl_init_args=csl_init_args, **model_args)
     
     # Print results
     print("Best epoch metrics for each fold: ", fold_metrics)

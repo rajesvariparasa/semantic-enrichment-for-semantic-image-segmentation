@@ -19,7 +19,7 @@ def load_best_model(path):
 
     
 # ------- Training functions for semi-supervised learning ------- #
-def train_epoch_ssl(model, data, optimizer, criterion_t1,criterion_t2, omega, device):
+def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2, omega, device):
     model.train()
     running_loss = 0.0
     running_loss_t1 = 0.0
@@ -35,14 +35,24 @@ def train_epoch_ssl(model, data, optimizer, criterion_t1,criterion_t2, omega, de
         features, labels = features.to(device), labels[:,siam_band,:,:].to(device)
         optimizer.zero_grad()
 
-        #task 1 - siam prediction
-        outputs_t1, outputs_t2 = model(features)
-        loss_t1 = criterion_t1(outputs_t1, labels) # loss
-
-        #task 2 - predict input bands back
-        loss_t2 = criterion_t2(outputs_t2, features) # loss
-
-        loss = (omega* loss_t1) + (1-omega)*loss_t2
+        if ssl_type == 'dual':                              
+            outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
+            loss_t1 = criterion_t1(outputs_t1, labels) 
+            loss_t2 = criterion_t2(outputs_t2, features) 
+            loss = (omega* loss_t1) + (1-omega)*loss_t2
+        
+        elif ssl_type == 'single_segsiam':                                    
+            outputs_t1, _ = model(features)      #task 1 - siam prediction
+            loss_t1 = criterion_t1(outputs_t1, labels) 
+            loss_t2 = torch.Tensor([0])
+            loss = loss_t1                      
+        
+        elif ssl_type == 'single_recon':
+            _, outputs_t2 = model(features)
+            loss_t1 = torch.Tensor([0])
+            loss_t2 = criterion_t2(outputs_t2, features) #task 2 - predict input bands back
+            loss = loss_t2
+        
         loss.backward()
         optimizer.step()
 
@@ -61,7 +71,7 @@ def train_epoch_ssl(model, data, optimizer, criterion_t1,criterion_t2, omega, de
     #overall_accuracy = correct_preds / (num_batches* batch_size * 510 * 510)
     return avg_loss, avg_loss_t1, avg_loss_t2 #, overall_accuracy 
 
-def validate_epoch_ssl(model, data, criterion_t1, criterion_t2, omega, device):
+def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2, omega, device):
     model.eval()
     running_loss = 0.0
     running_loss_t1 = 0.0
@@ -76,14 +86,23 @@ def validate_epoch_ssl(model, data, criterion_t1, criterion_t2, omega, device):
             siam_band = 2                                  # band number 0,1,2,3,4, = scl, siam 18,33,48,96 - decide based on baseline experiments
             features, labels = features.to(device), labels[:,siam_band,:,:].to(device)
 
-            #task 1 - siam prediction
-            outputs_t1, outputs_t2 = model(features)
-            loss_t1 = criterion_t1(outputs_t1, labels) # loss
-
-            #task 2 - predict input bands back
-            loss_t2 = criterion_t2(outputs_t2, features) # loss
-
-            loss = (omega* loss_t1) + (1-omega)*loss_t2
+            if ssl_type == 'dual':                              
+                outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
+                loss_t1 = criterion_t1(outputs_t1, labels) 
+                loss_t2 = criterion_t2(outputs_t2, features) 
+                loss = (omega* loss_t1) + (1-omega)*loss_t2
+            
+            elif ssl_type == 'single_segsiam':                                    
+                outputs_t1, _ = model(features)      #task 1 - siam prediction
+                loss_t1 = criterion_t1(outputs_t1, labels) 
+                loss_t2 = torch.Tensor([0])
+                loss = loss_t1                      
+            
+            elif ssl_type == 'single_recon':
+                _, outputs_t2 = model(features)
+                loss_t2 = criterion_t2(outputs_t2, features) #task 2 - predict input bands back
+                loss_t1 = torch.Tensor([0])
+                loss = loss_t2
                 
             # loss and number of correct predictions of the batch
             running_loss += loss.item()
@@ -98,7 +117,7 @@ def validate_epoch_ssl(model, data, criterion_t1, criterion_t2, omega, device):
     # overall_accuracy = correct_preds / (num_batches* batch_size * 510 * 510)
     return avg_loss, avg_loss_t1,avg_loss_t2  #, overall_accuracy
 
-def train_model_ssl(model, fold, train_data, val_data, batch_size, optimizer, scheduler, criterion_1,criterion_2, omega, device, patience,out_paths, epochs):
+def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, optimizer, scheduler, criterion_1,criterion_2, omega, device, patience,out_paths, epochs):
     start = time.time()
     model = model.to(device)
 
@@ -109,13 +128,17 @@ def train_model_ssl(model, fold, train_data, val_data, batch_size, optimizer, sc
     patience_counter = 0
 
     for epoch in range(epochs):
-        train_epoch_loss,train_epoch_loss_t1, train_epoch_loss_t2  = train_epoch_ssl(model, train_data, optimizer, criterion_1, criterion_2, omega, device)
-        val_epoch_loss,val_epoch_loss_t1, val_epoch_loss_t2 = validate_epoch_ssl(model, val_data, criterion_1, criterion_2, omega, device)
-        print(f"Epoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
+
+        epoch_args = {'model':model, 'ssl_type':ssl_type, 'criterion_t1':criterion_1, 
+                      'criterion_t2':criterion_2, 'omega':omega, 'device':device}
+        
+        train_epoch_loss,train_epoch_loss_t1, train_epoch_loss_t2  = train_epoch_ssl(optimizer=optimizer, data=train_data, **epoch_args)
+        val_epoch_loss,val_epoch_loss_t1, val_epoch_loss_t2 = validate_epoch_ssl(data=val_data, **epoch_args)
+
+        print(f"\nEpoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
     
         train_loss_history.append(train_epoch_loss)
         val_loss_history.append(val_epoch_loss)
-
 
         if scheduler is not None:
             scheduler.step()

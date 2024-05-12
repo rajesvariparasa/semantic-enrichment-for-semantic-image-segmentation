@@ -20,13 +20,13 @@ fi
 
 set -o errexit -o pipefail -o nounset
 cd scripts
-INPUT_TYPE="s2"
+INPUT_TYPE="siam_96"
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$INPUT_TYPE/quickview/"
 BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
-PATIENCE=20
+PATIENCE=80
 NUM_CLASSES=11
 LR=0.0005
 GAMMA=0.85

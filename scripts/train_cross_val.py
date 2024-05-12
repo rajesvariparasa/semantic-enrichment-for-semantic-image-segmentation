@@ -6,7 +6,14 @@ import torch
 import matplotlib.pyplot as plt
 import time
 from tqdm import tqdm
+import segmentation_models_pytorch as smp
 
+def load_best_model(model_out_path, **csl_init_args):
+    model = smp.Unet(**csl_init_args) # Initialize model
+    ckpt = torch.load(model_out_path)
+    model.load_state_dict(ckpt['model_state_dict'])
+    return model
+    
 def train_epoch(model, data, batch_size, optimizer, criterion, device):
     model.train()
     running_loss = 0.0
@@ -61,7 +68,7 @@ def validate_epoch(model, data,batch_size, criterion, device):
     return avg_loss, overall_accuracy
 
 
-def train_model(model, fold, train_data, val_data, batch_size, optimizer, scheduler, criterion, device, patience,out_paths, epochs):
+def train_model(model, fold, train_data, val_data, batch_size, optimizer, scheduler, criterion, device, patience,out_paths, epochs, csl_init_args):
     start = time.time()
     model = model.to(device)
 
@@ -76,7 +83,7 @@ def train_model(model, fold, train_data, val_data, batch_size, optimizer, schedu
     for epoch in range(epochs):
         train_epoch_loss, train_epoch_accuracy = train_epoch(model, train_data, batch_size, optimizer, criterion, device)
         val_epoch_loss, val_epoch_accuracy = validate_epoch(model, val_data, batch_size, criterion, device)
-        print(f"Epoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Train Accuracy: {train_epoch_accuracy:.4f} , Val Loss: {val_epoch_loss:.4f}, Val Accuracy: {val_epoch_accuracy:.4f}")
+        print(f"\nEpoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Train Accuracy: {train_epoch_accuracy:.4f} , Val Loss: {val_epoch_loss:.4f}, Val Accuracy: {val_epoch_accuracy:.4f}")
     
         train_loss_history.append(train_epoch_loss)
         val_loss_history.append(val_epoch_loss)
@@ -116,9 +123,10 @@ def train_model(model, fold, train_data, val_data, batch_size, optimizer, schedu
     model_tracking = {'train_loss_history':train_loss_history, 'train_accuracy_history':train_accuracy_history,
                       'val_loss_history':val_loss_history, 'val_accuracy_history':val_accuracy_history}
     
-    return model, model_tracking, best_epoch_metrics, train_duration
+    trained_model = load_best_model(model_out_path, **csl_init_args)
+    return trained_model, model_tracking, best_epoch_metrics, train_duration
 
-def fit_kfolds(models,generator, optimizers, schedulers, n_splits, **model_args):
+def fit_kfolds(models,generator, optimizers, schedulers, n_splits, csl_init_args, **model_args):
     start = time.time()
     sum_train_loss, sum_train_accuracy = 0.0, 0.0
     sum_val_loss, sum_val_accuracy = 0.0, 0.0
@@ -133,8 +141,8 @@ def fit_kfolds(models,generator, optimizers, schedulers, n_splits, **model_args)
         
         model, model_tracking, best_epoch_metrics, fold_duration = train_model(model=models[k], optimizer=optimizers[k],
                                                                 scheduler = schedulers[k], fold=k,
-                                                                train_data=train_data, val_data=val_data,
-                                                                **model_args)
+                                                                train_data=train_data, val_data=val_data, 
+                                                                csl_init_args=csl_init_args, **model_args)
         
         fold_durations.append(fold_duration)
 
@@ -148,7 +156,7 @@ def fit_kfolds(models,generator, optimizers, schedulers, n_splits, **model_args)
         trained_models.append(model)
     
     total_duration = time.time() - start
-    print(f"Training completed for ALL all folds in {total_duration//60:.0f}m {total_duration % 60:.0f}s \n")
+    print(f"\nTraining completed for ALL all folds in {total_duration//60:.0f}m {total_duration % 60:.0f}s \n")
 
     # save training durations for each fold and total in csv
     durations = fold_durations
@@ -175,10 +183,10 @@ def save_training_curves(fold_histories, fold_metrics, cross_val_metrics, out_pa
     fig, axs = plt.subplots(1, 2, figsize=(15, 5))
     colors = ['b', 'g', 'r']
     for i, (fold, history) in enumerate(fold_histories.items()):
-        axs[0].plot(history['train_loss_history'], label=f"{fold} Train", color = colors[i])
-        axs[0].plot(history['val_loss_history'], label=f"{fold} Validation", linestyle='--', color = colors[i])
-        axs[1].plot(history['train_accuracy_history'], label=  f"{fold} Train", color = colors[i])
-        axs[1].plot(history['val_accuracy_history'], label=  f"{fold} Validation", linestyle='--', color = colors[i])
+        axs[0].plot(history['train_loss_history'], label=f"Fold {i+1} Train", color = colors[i])
+        axs[0].plot(history['val_loss_history'], label=f"Fold {i+1} Validation", linestyle='--', color = colors[i])
+        axs[1].plot(history['train_accuracy_history'], label=  f"Fold {i+1} Train", color = colors[i])
+        axs[1].plot(history['val_accuracy_history'], label=  f"Fold {i+1} Validation", linestyle='--', color = colors[i])
 
     axs[0].set_title('Losses')
     axs[0].set_xlabel('Epoch')
@@ -204,9 +212,3 @@ def save_training_curves(fold_histories, fold_metrics, cross_val_metrics, out_pa
     #save cross_val_metrics in csv
     metrics = pd.DataFrame(cross_val_metrics, index=[0])
     metrics.to_csv(os.path.join(out_path, 'train_cross_val_metrics.csv'), index=False)        
-
-
-
-  
-
-

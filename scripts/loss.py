@@ -11,8 +11,6 @@ class SSIMLoss(nn.Module):
     def forward(self, input, target):
         return 1 - tgm.losses.ssim(input, target, max_val=1.0, window_size=11, reduction='mean')
 
-
-
 class L1Loss(nn.Module):
     def __init__(self):
         super(L1Loss, self).__init__()

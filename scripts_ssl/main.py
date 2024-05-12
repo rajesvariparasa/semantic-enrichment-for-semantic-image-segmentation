@@ -14,7 +14,6 @@ from loss import load_loss
 def parse_args():
     parser = argparse.ArgumentParser(description='SIAM for Semantic Image Segmentation')
     parser.add_argument('--input_dir', type=str, required=True, help='Path to the input data directory')
-    parser.add_argument('--out_path', type=str, required=True, help='Path to the outputs directory')
     parser.add_argument('--input_type', type=str, default='s2', help='Type of input data: s2, siam_18, siam_33, siam_48, siam_96')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training and evaluation')
     parser.add_argument('--process_level', type=str, default='l1c', help='Process level of the data: l1c or l2a')
@@ -27,12 +26,17 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
     parser.add_argument('--omega', type=float, default=0.5, help='Weight for the two tasks in the pretext task')
+    parser.add_argument('--gamma_ssl', type = float, default=0.8, help='Gamma for semi-supervised learning rate scheduler')
     parser.add_argument('--loss_ssl_1', type = str, default='DiceLoss', help='Loss function for task 1-segmentation in the pretext task')
     parser.add_argument('--loss_ssl_2', type = str, default='L1Loss', help='Loss function for task 2-reconstruction in the pretext task')
+    parser.add_argument('--ssl_type', type=str, required=True, help='One of dual or single_segsiam or single_recon')
+    parser.add_argument('--out_path', type=str, required=True, help='Path to the outputs directory')
+
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    print(args)
     #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
     print(f"Device: {device}")
@@ -42,9 +46,10 @@ def main():
     if not os.path.exists(big_outputs_path):
         os.makedirs(big_outputs_path, exist_ok=True)
 
-    ssl_config_args = {'gamma_ssl':0.85, 'lr_ssl':0.0005, 'weight_decay_ssl':1e-7, 'epochs_ssl':2, 'patience_ssl':5}
     # ------------------------------------Train pretext task---------------------------------------------
     # ------------------------------------------------------------------------------------------------------
+    ssl_config_args = {'gamma_ssl':args.gamma_ssl, 'lr_ssl':0.0005, 'weight_decay_ssl':1e-7, 'epochs_ssl':2, 'patience_ssl':5} #only using gamma_ssl for now
+
     # Initialize SSL multitask-model UNet with resnet encoder
     ssl_init_args = {'encoder_name':'resnet18', 'in_channels':10, 'classes':48, 'encoder_weights':None, 
                      'activation':None, 'add_reconstruction_head':True}
@@ -53,9 +58,9 @@ def main():
     optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
-    schedulers_ssl = [torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[0], gamma=args.gamma),
-                        torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[1], gamma=args.gamma),
-                        torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[2], gamma=args.gamma)] # Initialize scheduler
+    schedulers_ssl = [torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[0], gamma=ssl_config_args['gamma_ssl']),
+                        torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[1], gamma=ssl_config_args['gamma_ssl']),
+                        torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[2], gamma=ssl_config_args['gamma_ssl'])] # Initialize scheduler
     criterion_ssl_1 = load_loss(loss_name=args.loss_ssl_1)  # segmentation loss
     criterion_ssl_2 = load_loss(loss_name=args.loss_ssl_2)  # reconstruciton loss
 
@@ -71,8 +76,8 @@ def main():
     
     # Train model
     model_args_ssl = {'batch_size': args.batch_size,'patience': args.patience,'criterion_1': criterion_ssl_1, 'criterion_2': criterion_ssl_2, 
-                        'omega': args.omega, 'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
-    print("SSL Training Begins now...")
+                        'ssl_type': args.ssl_type, 'omega': args.omega, 'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
+    print(f"\nSSL Training Begins now...")
     trained_ssl_models, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
                                                                                                     optimizers=optimizers_ssl, schedulers=schedulers_ssl, 
                                                                                                     n_splits=3, **model_args_ssl)
@@ -129,7 +134,8 @@ def main():
     schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=args.gamma),
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=args.gamma),
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=args.gamma)] 
-    criterion = torch.nn.CrossEntropyLoss()  
+    #criterion = torch.nn.CrossEntropyLoss()  
+    criterion = load_loss(loss_name=args.loss_ssl_1)  # Initialize loss function - keeping it same as segmentation task in pretext task
 
     # Prepare loader arguments - same for train folds and test set
     base_args = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':'csl', 
@@ -139,7 +145,7 @@ def main():
     # Train models
     model_args = {'batch_size': args.batch_size,'patience': args.patience,'criterion': criterion, 
                   'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
-    print("Downstream Segmentation Training Begins now...")
+    print(f"\nDownstream Segmentation Training Begins now...")
     trained_models, fold_histories, fold_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
                                                                                 schedulers=schedulers, n_splits=3, **model_args)
     
