@@ -3,7 +3,7 @@
 #SBATCH --gres gpu:1
 #SBATCH --constraint a6000
 #SBATCH --mem 32G
-#SBATCH --time 20:00:00
+#SBATCH --time 30:00:00
 #SBATCH --partition shortrun
 #SBATCH --output=siamdl%j.out
 #SBATCH --mail-type FAIL,END
@@ -28,11 +28,13 @@ PROCESS_LEVEL="l1c"
 LEARN_TYPE="csl"
 PATIENCE=80
 NUM_CLASSES=11
-LR=0.0005
-GAMMA=0.85
+LR=0.0001
+GAMMA=0.95
 WEIGHT_DECAY=1e-7
 EPOCHS=80
-REMARKS="Gamma and Patience tuned to 0.85 and 20 respectively."
+ENCODER_NAME="resnet50"
+REMARKS="Increased epochs and gamma to 0.95. Encoder change."
+
 
 # Create output directory
 mkdir -p $OUT_PATH
@@ -51,32 +53,33 @@ echo "Learning Rate: $LR" >> $OUT_PATH/arguments.txt
 echo "Gamma: $GAMMA" >> $OUT_PATH/arguments.txt
 echo "Weight Decay: $WEIGHT_DECAY" >> $OUT_PATH/arguments.txt
 echo "Epochs: $EPOCHS" >> $OUT_PATH/arguments.txt
+echo "Encoder Name: $ENCODER_NAME" >> $OUT_PATH/arguments.txt
 echo "Remarks: $REMARKS" >> $OUT_PATH/arguments.txt
 
 echo "Starting script"
 echo $(date)
 
-monitor_gpu() {
-    output_file="$OUT_PATH/gpu_monitoring.csv"
+# monitor_gpu() {
+#     output_file="$OUT_PATH/gpu_monitoring.csv"
     
-    # Check if the file exists, if not, add headers
-    if [ ! -f "$output_file" ]; then
-        echo "datetime,utilization_PC,temperature_C,power_draw_W" > "$output_file"
-    fi
+#     # Check if the file exists, if not, add headers
+#     if [ ! -f "$output_file" ]; then
+#         echo "datetime,utilization_PC,temperature_C,power_draw_W" > "$output_file"
+#     fi
     
-    while true; do
-        gpu_info=$(srun -s --jobid $SLURM_JOBID nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
-        gpu_utilization=$(echo $gpu_info | awk '{print $1}')
-        gpu_temperature=$(echo $gpu_info | awk '{print $2}')
-        power_draw=$(echo $gpu_info | awk '{print $3}')
-        echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_utilization,$gpu_temperature,$power_draw" >> "$output_file"
-        sleep 10
-    done
-}
+#     while true; do
+#         gpu_info=$(srun -s --jobid $SLURM_JOBID nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
+#         gpu_utilization=$(echo $gpu_info | awk '{print $1}')
+#         gpu_temperature=$(echo $gpu_info | awk '{print $2}')
+#         power_draw=$(echo $gpu_info | awk '{print $3}')
+#         echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_utilization,$gpu_temperature,$power_draw" >> "$output_file"
+#         sleep 10
+#     done
+# }
 
 
-# Start GPU monitoring in the background
-monitor_gpu &
+# # Start GPU monitoring in the background
+# monitor_gpu &
 
 python main.py \
     --input_dir $INPUT_DIR \
@@ -90,10 +93,11 @@ python main.py \
     --lr $LR \
     --gamma $GAMMA \
     --weight_decay $WEIGHT_DECAY \
-    --epochs $EPOCHS
+    --epochs $EPOCHS \
+    --encoder_name $ENCODER_NAME
 
-# Stop GPU monitoring process
-trap "kill $!" EXIT
+# # Stop GPU monitoring process
+# trap "kill $!" EXIT
 
 cd
 cp "siamdl${SLURM_JOBID}.out" $OUT_PATH

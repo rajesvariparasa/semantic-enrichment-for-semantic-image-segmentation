@@ -33,8 +33,7 @@ class CELoss(nn.Module):
         super(CELoss, self).__init__()
 
     def forward(self, input, target):
-        return nn.CrossEntropyLoss()(input, target)
-    
+        return nn.CrossEntropyLoss()(input, target)    
 
 def load_loss(loss_name):
     if loss_name == 'SSIMLoss':
@@ -47,3 +46,37 @@ def load_loss(loss_name):
         return CELoss()
     else:
         raise ValueError(f"Loss {loss_name} not implemented")
+    
+# ------------------------------- metrics --------------------------------
+
+class IoUScore(nn.Module):
+    def __init__(self):
+        super(IoUScore, self).__init__()
+
+    def forward(self, tp, fp, fn, tn):
+        return smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+
+class F1Score(nn.Module):
+    def __init__(self):
+        super(F1Score, self).__init__()
+
+    def forward(self, tp, fp, fn, tn):
+        return smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+
+class Accuracy(nn.Module):
+    def __init__(self):
+        super(Accuracy, self).__init__()
+
+    def forward(self, tp, fp, fn, tn):
+        return smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
+
+
+def load_metric(metric_name):
+    if metric_name == 'IoUScore':
+        return IoUScore()
+    elif metric_name == 'F1Score':
+        return F1Score()
+    elif metric_name == 'Accuracy':
+        return Accuracy()
+    else:
+        raise ValueError(f"Metric {metric_name} not implemented")

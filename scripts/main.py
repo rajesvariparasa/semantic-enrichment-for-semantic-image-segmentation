@@ -8,7 +8,7 @@ from data_prep import generate_stratified_folds, prepare_test_loader
 #from train import train_model, save_training_curves
 from train_cross_val import fit_kfolds, save_training_curves
 from predict import predict
-from loss import DiceLoss
+from losses_metrics import load_loss, load_metric
 
 def parse_args():
     parser = argparse.ArgumentParser(description='SIAM for Semantic Image Segmentation')
@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument('--gamma', type=float, default=0.1, help='Gamma for learning rate scheduler')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
+    parser.add_argument('--encoder_name', type=str, default='resnet18', help='Encoder name for the model')
     return parser.parse_args()
 
 def main():
@@ -39,17 +40,21 @@ def main():
     if not os.path.exists(big_outputs_path):
         os.makedirs(big_outputs_path, exist_ok=True)
 
-    if args.input_type == 's2':
+    if 's2_siam' in args.input_type:
+        num_channels = 13       # Sentinel-2 spectral bands + RGB channels
+    elif args.input_type == 's2':
         num_channels = 10       # Sentinel-2 spectral bands
-    elif 'siam' in args.input_type:
+    elif args.input_type.split('_')[0] == 'siam':   
         num_channels = 3        # RGB channels
-    
+    else:
+        raise ValueError("Invalid input type. Please choose from: s2, siam_18, siam_33, siam_48, siam_96 or s2_siam_18, s2_siam_33, s2_siam_48, s2_siam_96.")
+
     # Initialize model, optimizer, scheduler and loss function
     # models = [UNet(n_channels=num_channels, n_classes=args.num_classes),
     #           UNet(n_channels=num_channels, n_classes=args.num_classes),
     #           UNet(n_channels=num_channels, n_classes=args.num_classes)] # Initialize model -milesial unet
     
-    csl_init_args = {'encoder_name':'resnet18', 'in_channels':num_channels, 'classes':args.num_classes, 
+    csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
                      'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
     models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model -smp unet
 
@@ -60,7 +65,10 @@ def main():
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[1], gamma=args.gamma),
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=args.gamma)] # Initialize scheduler
     #criterion = torch.nn.CrossEntropyLoss()  # Initialize loss function
-    criterion = DiceLoss()  # Initialize loss function
+    criterion = load_loss(loss_name='DiceLoss')  # Initialize loss function
+    metrics = {'Accuracy': load_metric(metric_name='Accuracy'),
+               'IoUScore': load_metric(metric_name = 'IoUScore'),
+               'F1Score': load_metric(metric_name = 'F1Score')} # Initialize metrics
 
     # Prepare loader arguments - same for train folds and test set
     base_args = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':args.learn_type, 
@@ -69,19 +77,18 @@ def main():
     generator = generate_stratified_folds(**base_args)
 
     # Train model
-
-    model_args = {'batch_size': args.batch_size,'patience': args.patience,'criterion': criterion, 
+    model_args = {'batch_size': args.batch_size,'patience': args.patience,'criterion': criterion, 'metrics': metrics,
                   'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
     
-    trained_models, fold_histories, fold_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
+    trained_models, foldwise_histories, foldwise_best_epoch_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
                                                                                 schedulers=schedulers, n_splits=3, csl_init_args=csl_init_args, **model_args)
     
     # Print results
-    print("Best epoch metrics for each fold: ", fold_metrics)
+    print("Best epoch metrics for each fold: ", foldwise_best_epoch_metrics, "\n")
     print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics, "\n")
 
     # Save training curves
-    save_training_curves(fold_histories=fold_histories, fold_metrics=fold_metrics,
+    save_training_curves(foldwise_histories=foldwise_histories, foldwise_best_epoch_metrics=foldwise_best_epoch_metrics,
                          cross_val_metrics=cross_val_metrics, out_path= args.out_path)
     
     #---- Testing script from below ----- 
@@ -92,7 +99,7 @@ def main():
     # Save prediction files and all DW calcs: confusion matrices, class metrics, losses and accuracies
     final_test_metrics =predict(trained_models = trained_models, data=test_loader, 
                                 batch_size=args.batch_size, n_classes=args.num_classes, 
-                                criterion=criterion, device=device, out_paths=(big_outputs_path, args.out_path))
+                                criterion=criterion,metrics=metrics ,device=device, out_paths=(big_outputs_path, args.out_path))
 
     print("The performance of the ensemble model on the test set is as follows:")
     print(final_test_metrics)

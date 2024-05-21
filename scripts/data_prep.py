@@ -43,8 +43,21 @@ class SiamDW_DataClass(Dataset):
         with rio.open(label_p) as src:
             label = src.read().astype(np.int16)
 
+        # both siam and s2 as inputs
+        if 's2_siam' in self.input_type:    
+            feat_fname= (f"{self.process_level}_"
+                        f"{self.learn_type}_"
+                        f"{self.metadata_set.iloc[idx, 0]}_"
+                        f"feats.tif")
+            feat_p = os.path.join(self.data_path, feat_fname)
+            with rio.open(feat_p) as src:
+                feat = src.read().astype(np.int16)
+            siam_granularity = self.input_type.split('_')[1] + '_'+ self.input_type.split('_')[2]
+            siam_label = self.convert_to_rgb(label, siam_granularity)
+            feat = np.concatenate((feat, siam_label), axis=0)
+        
         # Load feature (based on input type)
-        if self.input_type == 's2':                 # multipsectral input
+        elif self.input_type == 's2':                 # multipsectral input
             feat_fname= (f"{self.process_level}_"
                         f"{self.learn_type}_"
                         f"{self.metadata_set.iloc[idx, 0]}_"
@@ -54,8 +67,11 @@ class SiamDW_DataClass(Dataset):
             with rio.open(feat_p) as src:
                 feat = src.read().astype(np.int16)
        
-        elif 'siam' in self.input_type:             # siam input
+        elif self.input_type.split('_')[0] == 'siam':        # siam input
             feat = self.convert_to_rgb(label, self.input_type)
+
+        else:
+            print("Error: input type not recognized")
 
         # Convert to torch tensors of type float32
         feat = torch.from_numpy(feat).to(torch.float32)
@@ -117,8 +133,14 @@ class NormalizeImage:
     def __call__(self, image):
         if self.input_type == 's2':
             return self.normalize_s2(image)
-        elif 'siam' in self.input_type:
+        if 'siam' in self.input_type:
             return self.normalize_siam(image)
+        elif 's2_siam' in self.input_type:
+            norm_s2 = self.normalize_s2(image[:10])  
+            norm_siam = self.normalize_siam(image[10:])
+            return torch.cat((norm_s2, norm_siam), dim=0)
+        
+        
         
     def normalize_s2(self, image):
         # Normalize image to the 1st and 99th percentile
@@ -173,6 +195,7 @@ def prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, b
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, drop_last=True, shuffle=False)
+
     return train_loader, val_loader
 
 def generate_stratified_folds(input_dir, process_level, learn_type, input_type, batch_size, n_splits=3):

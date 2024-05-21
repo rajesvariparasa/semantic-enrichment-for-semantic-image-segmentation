@@ -92,16 +92,19 @@ def main():
     
     # ------------------------------------Weights Transfer---------------------------------------------------
     # --------------------------------------------------------------------------------------------------------
-    # average the encoder weights of the trained models
-    avg_model_ssl = smp.Unet(**ssl_init_args)
-    for avg_layer, layer_1, layer_2, layer_3 in zip(avg_model_ssl.encoder.parameters(), 
-                                                    trained_ssl_models[0].encoder.parameters(), 
-                                                    trained_ssl_models[1].encoder.parameters(), 
-                                                    trained_ssl_models[2].encoder.parameters()):
-        avg_layer.data = (layer_1.data + layer_2.data + layer_3.data) / 3
+
+    # # average the encoder weights of the trained models ----- UPDATE: Not averaging the weights, picking model with least loss instead
+    # avg_model_ssl = smp.Unet(**ssl_init_args)
+    # for avg_layer, layer_1, layer_2, layer_3 in zip(avg_model_ssl.encoder.parameters(), 
+    #                                                 trained_ssl_models[0].encoder.parameters(), 
+    #                                                 trained_ssl_models[1].encoder.parameters(), 
+    #                                                 trained_ssl_models[2].encoder.parameters()):
+    #     avg_layer.data = (layer_1.data + layer_2.data + layer_3.data) / 3
     
-    # DELETING TRAINED MODELS TO FREE UP MEMORY
-    del trained_ssl_models
+
+    # pick the model with least loss from the fold metrics
+    best_fold_key = min(fold_metrics_ssl, key=lambda k: fold_metrics_ssl[k]['val_loss']).split('_')[1]
+    print(f"\nBest fold: {best_fold_key}")
 
     if args.input_type == 's2':
         num_channels = 10       # Sentinel-2 spectral bands
@@ -113,11 +116,15 @@ def main():
                      'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
     models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model
 
-    models[0].encoder = avg_model_ssl.encoder
-    models[1].encoder = avg_model_ssl.encoder
-    models[2].encoder = avg_model_ssl.encoder
-    
-    # Freeze the encoder weights
+    # Copy the all weights from the best fold model
+    models[0].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
+    models[1].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
+    models[2].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
+
+    # DELETING TRAINED MODELS TO FREE UP MEMORY
+    del trained_ssl_models
+
+    # Freeze the encoder weights, use decoder weights for downstream task initialization
     for param in models[0].encoder.parameters():
         param.requires_grad = False
     for param in models[1].encoder.parameters():

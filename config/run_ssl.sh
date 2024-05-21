@@ -3,7 +3,7 @@
 #SBATCH --gres gpu:1
 #SBATCH --constraint a6000
 #SBATCH --mem 32G
-#SBATCH --time 30:00:00
+#SBATCH --time 2-00:00:00
 #SBATCH --partition shortrun
 #SBATCH --output=siamdl%j.out
 #SBATCH --mail-type FAIL,END
@@ -27,12 +27,12 @@ PROCESS_LEVEL="l1c"
 PATIENCE=80
 NUM_CLASSES=11
 LR=0.0005
-GAMMA=0.85
+GAMMA=0.9
 WEIGHT_DECAY=1e-7
-EPOCHS=80
-SSL_TYPE="single_recon"
+EPOCHS=60
+SSL_TYPE="dual"
 OMEGA=0.5
-GAMMA_SSL=0.8
+GAMMA_SSL=0.9
 LOSS_SSL_1="DiceLoss"
 LOSS_SSL_2="L1Loss"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
@@ -64,27 +64,27 @@ echo "Remarks: $REMARKS" >> $OUT_PATH/arguments.txt
 echo "Starting script"
 echo $(date)
 
-monitor_gpu() {
-    output_file="$OUT_PATH/gpu_monitoring.csv"
+# monitor_gpu() {
+#     output_file="$OUT_PATH/gpu_monitoring.csv"
     
-    # Check if the file exists, if not, add headers
-    if [ ! -f "$output_file" ]; then
-        echo "datetime,utilization_PC,temperature_C,power_draw_W" > "$output_file"
-    fi
+#     # Check if the file exists, if not, add headers
+#     if [ ! -f "$output_file" ]; then
+#         echo "datetime,utilization_PC,temperature_C,power_draw_W" > "$output_file"
+#     fi
     
-    while true; do
-        gpu_info=$(srun -s --jobid $SLURM_JOBID nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
-        gpu_utilization=$(echo $gpu_info | awk '{print $1}')
-        gpu_temperature=$(echo $gpu_info | awk '{print $2}')
-        power_draw=$(echo $gpu_info | awk '{print $3}')
-        echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_utilization,$gpu_temperature,$power_draw" >> "$output_file"
-        sleep 10
-    done
-}
+#     while true; do
+#         gpu_info=$(srun -s --jobid $SLURM_JOBID nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits)
+#         gpu_utilization=$(echo $gpu_info | awk '{print $1}')
+#         gpu_temperature=$(echo $gpu_info | awk '{print $2}')
+#         power_draw=$(echo $gpu_info | awk '{print $3}')
+#         echo "$(date +"%Y-%m-%d %H:%M:%S"),$gpu_utilization,$gpu_temperature,$power_draw" >> "$output_file"
+#         sleep 10
+#     done
+# }
 
 
-# Start GPU monitoring in the background
-monitor_gpu &
+# # Start GPU monitoring in the background
+# monitor_gpu &
 
 python main.py \
     --input_type $INPUT_TYPE \
@@ -105,8 +105,8 @@ python main.py \
     --out_path $OUT_PATH
 
 
-# Stop GPU monitoring process
-trap "kill $!" EXIT
+# # Stop GPU monitoring process
+# trap "kill $!" EXIT
 
 cd
 cp "siamdl${SLURM_JOBID}.out" $OUT_PATH
