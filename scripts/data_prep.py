@@ -52,7 +52,7 @@ class SiamDW_DataClass(Dataset):
             feat_p = os.path.join(self.data_path, feat_fname)
             with rio.open(feat_p) as src:
                 feat = src.read().astype(np.int16)
-            siam_granularity = self.input_type.split('_')[1] + '_'+ self.input_type.split('_')[2]
+            siam_granularity = self.input_type.split('_')[1] + '_'+ self.input_type.split('_')[2] # get the siam granularity to be used in combo with s2
             siam_label = self.convert_to_rgb(label, siam_granularity)
             feat = np.concatenate((feat, siam_label), axis=0)
         

@@ -76,11 +76,11 @@ def main():
    
     generator = generate_stratified_folds(**base_args)
 
-    # Train model
+    # Train models
     model_args = {'batch_size': args.batch_size,'patience': args.patience,'criterion': criterion, 'metrics': metrics,
                   'device': device,'epochs':args.epochs,'out_paths': (big_outputs_path, args.out_path)}
     
-    trained_models, foldwise_histories, foldwise_best_epoch_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
+    trained_models, best_epoch_nums,foldwise_histories, foldwise_best_epoch_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
                                                                                 schedulers=schedulers, n_splits=3, csl_init_args=csl_init_args, **model_args)
     
     # Print results
@@ -88,7 +88,7 @@ def main():
     print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics, "\n")
 
     # Save training curves
-    save_training_curves(foldwise_histories=foldwise_histories, foldwise_best_epoch_metrics=foldwise_best_epoch_metrics,
+    save_training_curves(best_epoch_nums=best_epoch_nums, foldwise_histories=foldwise_histories, foldwise_best_epoch_metrics=foldwise_best_epoch_metrics,
                          cross_val_metrics=cross_val_metrics, out_path= args.out_path)
     
     #---- Testing script from below ----- 

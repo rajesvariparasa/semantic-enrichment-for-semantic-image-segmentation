@@ -3,8 +3,8 @@
 #SBATCH --gres gpu:1
 #SBATCH --constraint a6000
 #SBATCH --mem 32G
-#SBATCH --time 2-00:00:00
-#SBATCH --partition shortrun
+#SBATCH --time 3-00:00:00
+#SBATCH --partition longrun
 #SBATCH --output=siamdl%j.out
 #SBATCH --mail-type FAIL,END
 
@@ -26,17 +26,22 @@ BATCH_SIZE=16
 PROCESS_LEVEL="l1c"
 PATIENCE=80
 NUM_CLASSES=11
-LR=0.0005
-GAMMA=0.9
+LR=0.0001
+GAMMA=0.92
 WEIGHT_DECAY=1e-7
-EPOCHS=60
-SSL_TYPE="dual"
+EPOCHS=80
+SSL_TYPE="single_segsiam"
 OMEGA=0.5
-GAMMA_SSL=0.9
+EPOCHS_SSL=60
+GAMMA_SSL=0.92
+SIAM_GRAN_SSL="siam_96"
 LOSS_SSL_1="DiceLoss"
 LOSS_SSL_2="L1Loss"
+METRIC_SSL_1="IoUScore"
+METRIC_SSL_2="R2Metric"
+ENCODER_NAME="resnet50"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
-REMARKS="SSL Run."
+REMARKS="SSL Run. In this run, unfreeze encoder weights in downstream task."
 
 # Create output directory
 mkdir -p $OUT_PATH
@@ -54,10 +59,15 @@ echo "Learning Rate: $LR" >> $OUT_PATH/arguments.txt
 echo "Weight Decay: $WEIGHT_DECAY" >> $OUT_PATH/arguments.txt
 echo "Epochs: $EPOCHS" >> $OUT_PATH/arguments.txt
 echo "Gamma: $GAMMA" >> $OUT_PATH/arguments.txt
+echo "Epochs SSL: $EPOCHS_SSL" >> $OUT_PATH/arguments.txt
 echo "SSL Type: $SSL_TYPE" >> $OUT_PATH/arguments.txt
+echo "Siam Granularity SSL: $SIAM_GRAN_SSL" >> $OUT_PATH/arguments.txt
 echo "Gamma SSL: $GAMMA_SSL" >> $OUT_PATH/arguments.txt
 echo "SSL Loss 1: $LOSS_SSL_1" >> $OUT_PATH/arguments.txt
 echo "SSL Loss 2: $LOSS_SSL_2" >> $OUT_PATH/arguments.txt
+echo "SSL Metric 1: $METRIC_SSL_1" >> $OUT_PATH/arguments.txt
+echo "SSL Metric 2: $METRIC_SSL_2" >> $OUT_PATH/arguments.txt
+echo "Encoder Name: $ENCODER_NAME" >> $OUT_PATH/arguments.txt
 echo "Input Directory: $INPUT_DIR" >> $OUT_PATH/arguments.txt
 echo "Remarks: $REMARKS" >> $OUT_PATH/arguments.txt
 
@@ -99,9 +109,14 @@ python main.py \
     --epochs $EPOCHS \
     --ssl_type $SSL_TYPE \
     --omega $OMEGA \
+    --epochs_ssl $EPOCHS_SSL \
     --gamma_ssl $GAMMA_SSL \
+    --siam_gran_ssl $SIAM_GRAN_SSL \
     --loss_ssl_1 $LOSS_SSL_1 \
     --loss_ssl_2 $LOSS_SSL_2 \
+    --metric_ssl_1 $METRIC_SSL_1 \
+    --metric_ssl_2 $METRIC_SSL_2 \
+    --encoder_name $ENCODER_NAME \
     --out_path $OUT_PATH
 
 

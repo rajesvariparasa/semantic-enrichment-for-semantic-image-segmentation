@@ -20,7 +20,7 @@ fi
 
 set -o errexit -o pipefail -o nounset
 cd scripts
-INPUT_TYPE="siam_96"
+INPUT_TYPE="s2_siam_96"
 INPUT_DIR="/share/projects/siamdl/data/small/"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$INPUT_TYPE/quickview/"
 BATCH_SIZE=16
@@ -29,11 +29,11 @@ LEARN_TYPE="csl"
 PATIENCE=80
 NUM_CLASSES=11
 LR=0.0001
-GAMMA=0.95
+GAMMA=0.92
 WEIGHT_DECAY=1e-7
 EPOCHS=80
 ENCODER_NAME="resnet50"
-REMARKS="Increased epochs and gamma to 0.95. Encoder change."
+REMARKS="CSL Run. Early stopping reintroduced."
 
 
 # Create output directory

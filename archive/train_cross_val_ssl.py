@@ -194,26 +194,10 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
     model = model.to(device)
 
     min_val_loss = np.inf
-
-    # individual losses and accuracies for each task - remember that one these can possibly be zero depending on the ssl_type (single/dual)
-    train_loss_history_t1 = []
-    val_loss_history_t1 = []
-
-    train_loss_history_t2 = []
-    val_loss_history_t2 = []
-
-    train_acc_history_t1 = []
-    val_acc_history_t1 = []
-
-    train_acc_history_t2 = []
-    val_acc_history_t2 = []
-
-    # -------
-
-    train_loss_history = [] # this is the combined loss of both tasks
+    train_loss_history = []
     val_loss_history = []
 
-    train_acc_history = []    # this is the combined accuracy of both tasks
+    train_acc_history = []
     val_acc_history = []
     best_epoch_metrics = {}
 
@@ -236,18 +220,6 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
         print(f"\nEpoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
         print(f"Train Acc: {train_epoch_acc:.4f}, Val Acc: {val_epoch_acc:.4f},\n Train Acc T1: {train_epoch_acc_t1:.4f}, Val Acc T1: {val_epoch_acc_t1:.4f}, Train Acc T2: {train_epoch_acc_t2:.4f}, Val Acc T2: {val_epoch_acc_t2:.4f}")
         
-        train_loss_history_t1.append(train_epoch_loss_t1)
-        val_loss_history_t1.append(val_epoch_loss_t1)
-
-        train_loss_history_t2.append(train_epoch_loss_t2)
-        val_loss_history_t2.append(val_epoch_loss_t2)
-
-        train_acc_history_t1.append(train_epoch_acc_t1)
-        val_acc_history_t1.append(val_epoch_acc_t1)
-
-        train_acc_history_t2.append(train_epoch_acc_t2)
-        val_acc_history_t2.append(val_epoch_acc_t2)
-
         train_loss_history.append(train_epoch_loss)
         val_loss_history.append(val_epoch_loss)
 
@@ -262,42 +234,19 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
             best_epoch_metrics= {'train_loss':train_epoch_loss,
                                  'val_loss':val_epoch_loss,
                                  'train_acc':train_epoch_acc,
-                                 'val_acc':val_epoch_acc,
-
-                                 'train_loss_t1':train_epoch_loss_t1,
-                                 'val_loss_t1':val_epoch_loss_t1,
-                                 'train_acc_t1':train_epoch_acc_t1,
-                                 'val_acc_t1':val_epoch_acc_t1,
-
-                                 'train_loss_t2':train_epoch_loss_t2,
-                                 'val_loss_t2':val_epoch_loss_t2,
-                                 'train_acc_t2':train_epoch_acc_t2,
-                                 'val_acc_t2':val_epoch_acc_t2,
-                                 }
+                                 'val_acc':val_epoch_acc}
             
             ckpt = {
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
-                    'loss': min_val_loss,
-
                     'train_loss_history': train_loss_history,
                     'val_loss_history': val_loss_history,
                     'train_acc_history': train_acc_history,
                     'val_acc_history': val_acc_history,
-
-                    'train_loss_history_t1': train_loss_history_t1,
-                    'val_loss_history_t1': val_loss_history_t1,
-                    'train_acc_history_t1': train_acc_history_t1,
-                    'val_acc_history_t1': val_acc_history_t1,
-
-                    'train_loss_history_t2': train_loss_history_t2,
-                    'val_loss_history_t2': val_loss_history_t2,
-                    'train_acc_history_t2': train_acc_history_t2,
-                    'val_acc_history_t2': val_acc_history_t2
+                    'loss': min_val_loss
                 }
-            
             torch.save(ckpt, model_out_path)
             print("Model saved") # saves the last best model, overwrites the previous best one
         else:
@@ -312,18 +261,7 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
     model_tracking = {'train_loss_history':train_loss_history, 
                       'val_loss_history':val_loss_history,
                       'train_acc_history':train_acc_history,
-                      'val_acc_history':val_acc_history,
-
-                      'train_loss_history_t1':train_loss_history_t1,
-                      'val_loss_history_t1':val_loss_history_t1,
-                      'train_acc_history_t1':train_acc_history_t1,
-                      'val_acc_history_t1':val_acc_history_t1,
-
-                      'train_loss_history_t2':train_loss_history_t2,
-                      'val_loss_history_t2':val_loss_history_t2,
-                      'train_acc_history_t2':train_acc_history_t2,
-                      'val_acc_history_t2':val_acc_history_t2
-                      }
+                      'val_acc_history':val_acc_history}
     
     trained_model, best_e = load_best_model(model_out_path, **ssl_init_args)
     return trained_model, best_e, model_tracking, best_epoch_metrics, train_duration
@@ -334,16 +272,6 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
     sum_val_loss = 0.0
     sum_train_acc = 0.0
     sum_val_acc = 0.0
-
-    sum_train_loss_t1 = 0.0
-    sum_val_loss_t1 = 0.0
-    sum_train_acc_t1 = 0.0
-    sum_val_acc_t1 = 0.0
-
-    sum_train_loss_t2 = 0.0
-    sum_val_loss_t2 = 0.0
-    sum_train_acc_t2 = 0.0
-    sum_val_acc_t2 = 0.0
 
     fold_histories ={}
     fold_metrics = {}
@@ -367,16 +295,6 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
         sum_train_acc += best_epoch_metrics['train_acc']
         sum_val_acc += best_epoch_metrics['val_acc']
 
-        sum_train_loss_t1 += best_epoch_metrics['train_loss_t1']
-        sum_val_loss_t1 += best_epoch_metrics['val_loss_t1']
-        sum_train_acc_t1 += best_epoch_metrics['train_acc_t1']
-        sum_val_acc_t1 += best_epoch_metrics['val_acc_t1']
-
-        sum_train_loss_t2 += best_epoch_metrics['train_loss_t2']
-        sum_val_loss_t2 += best_epoch_metrics['val_loss_t2']
-        sum_train_acc_t2 += best_epoch_metrics['train_acc_t2']
-        sum_val_acc_t2 += best_epoch_metrics['val_acc_t2']
-
         fold_metrics[f'fold_{k}'] = best_epoch_metrics
         fold_histories[f'fold_{k}'] = model_tracking
         
@@ -396,111 +314,53 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
     cross_val_metrics = {'train_loss':sum_train_loss/n_splits,
                             'val_loss':sum_val_loss/n_splits,
                             'train_acc':sum_train_acc/n_splits,
-                            'val_acc':sum_val_acc/n_splits,
-
-                            'val_loss_t1':sum_val_loss_t1/n_splits,
-                            'train_loss_t1':sum_train_loss_t1/n_splits,
-                            'val_acc_t1':sum_val_acc_t1/n_splits,
-                            'train_acc_t1':sum_train_acc_t1/n_splits,
-
-                            'val_loss_t2':sum_val_loss_t2/n_splits,
-                            'train_loss_t2':sum_train_loss_t2/n_splits,
-                            'val_acc_t2':sum_val_acc_t2/n_splits,
-                            'train_acc_t2':sum_train_acc_t2/n_splits}
+                            'val_acc':sum_val_acc/n_splits}
     
     # fold_metrics are the best metrics for each fold
     # cross_val_metrics are the average metrics for all folds    
     return trained_models, best_epoch_nums, fold_histories, fold_metrics, cross_val_metrics
 
-
-def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cross_val_metrics, out_path):   
-    # save each history list
+def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cross_val_metrics, out_path):
+       
+     # save each history list
     dir_hist = os.path.join(out_path, 'fold_histories_ssl')
     os.makedirs(dir_hist, exist_ok=True)
     for key, history in fold_histories.items():
         np.save(os.path.join(dir_hist, f'{key}_history.npy'), history)
 
-    # if sum of t1 accuracy history or t2 accuracy history is zero, then 1 by 2 plot, else 2 by 3 plot. check with in one fold
-    if np.sum(fold_histories['fold_0']['train_acc_history_t1']) == 0 or np.sum(fold_histories['fold_0']['train_acc_history_t2']) == 0:
-        fig, axs = plt.subplots(1,2, figsize=(12, 5))
-        colors = ['b', 'g', 'r']
+    # plot training and validation losses and accuracies of all three folds. One plot for losses and one for accuracies side by side
+    fig, axs = plt.subplots(1,2, figsize=(12, 5))
+    colors = ['b', 'g', 'r']
 
-        for i, (fold, history) in enumerate(fold_histories.items()):
-            axs[0].plot(history['train_loss_history'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[0].plot(history['val_loss_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-            axs[1].plot(history['train_acc_history'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[1].plot(history['val_acc_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
+    for i, (fold, history) in enumerate(fold_histories.items()):
+        axs[0].plot(history['train_loss_history'], label=f'Fold {i+1} Train', color=colors[i])
+        axs[0].plot(history['val_loss_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
+        axs[0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
+        axs[1].plot(history['train_acc_history'], label=f'Fold {i+1} Train', color=colors[i])
+        axs[1].plot(history['val_acc_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
+        axs[1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
 
-        axs[0].set_title('Loss', fontsize=15)
-        axs[0].set_xlabel('Epochs', fontsize=12)
-        axs[0].set_ylabel('Loss', fontsize=12)
-        axs[0].legend()
+    axs[0].set_title('Loss', fontsize=15)
+    axs[0].set_xlabel('Epochs', fontsize=12)
+    axs[0].set_ylabel('Loss', fontsize=12)
+    axs[0].legend()
 
-        axs[1].set_title('Accuracy Metric', fontsize=15)
-        axs[1].set_xlabel('Epochs', fontsize=12)
-        axs[1].set_ylabel('Accuracy', fontsize=12)
-        axs[1].legend()
+    axs[1].set_title('Accuracy Metric', fontsize=15)
+    axs[1].set_xlabel('Epochs', fontsize=12)
+    axs[1].set_ylabel('Accuracy', fontsize=12)
+    axs[1].legend()
 
-        #fontsize ticks increase
-        for ax in axs:
-            ax.tick_params(axis='both', which='major', labelsize=12)
-        
-        max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])  
-        axs[0].set_xticks(np.arange(0, max_x_ticks, step = 5))
-        axs[1].set_xticks(np.arange(0, max_x_ticks, step = 5))
+    #fontsize ticks increase
+    for ax in axs:
+        ax.tick_params(axis='both', which='major', labelsize=12)
+    
+    max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])  
+    axs[0].set_xticks(np.arange(0, max_x_ticks, step = 5))
+    axs[1].set_xticks(np.arange(0, max_x_ticks, step = 5))
 
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
-        plt.close()
-
-    else:
-        fig, axs = plt.subplots(3,2, figsize=(12, 15))
-        colors = ['b', 'g', 'r']
-
-        for i, (fold, history) in enumerate(fold_histories.items()):
-            axs[0,0].plot(history['train_loss_history'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[0,0].plot(history['val_loss_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[0,0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-            axs[0,1].plot(history['train_acc_history'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[0,1].plot(history['val_acc_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[0,1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-
-            axs[1,0].plot(history['train_loss_history_t1'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[1,0].plot(history['val_loss_history_t1'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[1,0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-            axs[1,1].plot(history['train_acc_history_t1'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[1,1].plot(history['val_acc_history_t1'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[1,1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-
-            axs[2,0].plot(history['train_loss_history_t2'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[2,0].plot(history['val_loss_history_t2'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[2,0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-            axs[2,1].plot(history['train_acc_history_t2'], label=f'Fold {i+1} Train', color=colors[i])
-            axs[2,1].plot(history['val_acc_history_t2'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-            axs[2,1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-
-        axs[0,0].set_title('Combined Loss', fontsize=15)
-        axs[0,1].set_title('Combined Accuracy Metric', fontsize=15)
-        axs[1,0].set_title('Loss T1', fontsize=15)
-        axs[1,1].set_title('Accuracy Metric T1', fontsize=15)
-        axs[2,0].set_title('Loss T2', fontsize=15)
-        axs[2,1].set_title('Accuracy Metric T2', fontsize=15)
-
-        for ax in axs.flatten():
-            ax.tick_params(axis='both', which='major', labelsize=12)
-            ax.set_xlabel('Epochs', fontsize=12)
-            ax.set_ylabel('Loss', fontsize=12)
-            ax.legend()
-
-        max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])
-        for ax in axs.flatten():
-            ax.set_xticks(np.arange(0, max_x_ticks, step = 5))
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
-        plt.close()
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
+    plt.close()
 
     #save fold_metrics in csv
     index = list(fold_metrics['fold_0'].keys())
@@ -510,57 +370,4 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
     #save cross_val_metrics in csv
     metrics = pd.DataFrame(cross_val_metrics, index=[0])
     metrics.to_csv(os.path.join(out_path, 'train_cross_val_metrics_ssl.csv'), index=False, float_format='%.4f')
-
-
-
-# def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cross_val_metrics, out_path):
-       
-#      # save each history list
-#     dir_hist = os.path.join(out_path, 'fold_histories_ssl')
-#     os.makedirs(dir_hist, exist_ok=True)
-#     for key, history in fold_histories.items():
-#         np.save(os.path.join(dir_hist, f'{key}_history.npy'), history)
-
-#     # plot training and validation losses and accuracies of all three folds. One plot for losses and one for accuracies side by side
-#     fig, axs = plt.subplots(1,2, figsize=(12, 5))
-#     colors = ['b', 'g', 'r']
-
-#     for i, (fold, history) in enumerate(fold_histories.items()):
-#         axs[0].plot(history['train_loss_history'], label=f'Fold {i+1} Train', color=colors[i])
-#         axs[0].plot(history['val_loss_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-#         axs[0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-#         axs[1].plot(history['train_acc_history'], label=f'Fold {i+1} Train', color=colors[i])
-#         axs[1].plot(history['val_acc_history'], label=f'Fold {i+1} Validation', color=colors[i], linestyle='--')
-#         axs[1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
-
-#     axs[0].set_title('Loss', fontsize=15)
-#     axs[0].set_xlabel('Epochs', fontsize=12)
-#     axs[0].set_ylabel('Loss', fontsize=12)
-#     axs[0].legend()
-
-#     axs[1].set_title('Accuracy Metric', fontsize=15)
-#     axs[1].set_xlabel('Epochs', fontsize=12)
-#     axs[1].set_ylabel('Accuracy', fontsize=12)
-#     axs[1].legend()
-
-#     #fontsize ticks increase
-#     for ax in axs:
-#         ax.tick_params(axis='both', which='major', labelsize=12)
-    
-#     max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])  
-#     axs[0].set_xticks(np.arange(0, max_x_ticks, step = 5))
-#     axs[1].set_xticks(np.arange(0, max_x_ticks, step = 5))
-
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
-#     plt.close()
-
-#     #save fold_metrics in csv
-#     index = list(fold_metrics['fold_0'].keys())
-#     metrics = pd.DataFrame(fold_metrics, index=index)
-#     metrics.to_csv(os.path.join(out_path, 'train_fold_metrics_ssl.csv'), index=True, index_label='metric', float_format='%.4f')
-
-#     #save cross_val_metrics in csv
-#     metrics = pd.DataFrame(cross_val_metrics, index=[0])
-#     metrics.to_csv(os.path.join(out_path, 'train_cross_val_metrics_ssl.csv'), index=False, float_format='%.4f')
 

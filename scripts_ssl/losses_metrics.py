@@ -2,15 +2,10 @@ import torch
 import torchgeometry as tgm
 import torch.nn as nn
 import segmentation_models_pytorch as smp
+from torchmetrics import R2Score
+import kornia
 
-# reconstruction losses
-class SSIMLoss(nn.Module):
-    def __init__(self):
-        super(SSIMLoss, self).__init__()
-
-    def forward(self, input, target):
-        return 1 - tgm.losses.ssim(input, target, max_val=1.0, window_size=11, reduction='mean')
-
+# reconstruction loss
 class L1Loss(nn.Module):
     def __init__(self):
         super(L1Loss, self).__init__()
@@ -36,9 +31,8 @@ class CELoss(nn.Module):
         return nn.CrossEntropyLoss()(input, target)    
 
 def load_loss(loss_name):
-    if loss_name == 'SSIMLoss':
-        return SSIMLoss()
-    elif loss_name == 'L1Loss':
+
+    if loss_name == 'L1Loss':
         return L1Loss()
     elif loss_name == 'DiceLoss':
         return DiceLoss()
@@ -48,6 +42,15 @@ def load_loss(loss_name):
         raise ValueError(f"Loss {loss_name} not implemented")
     
 # ------------------------------- metrics --------------------------------
+
+# reconstruction metric
+class R2Metric(nn.Module):
+    def __init__(self):
+        super(R2Metric, self).__init__()
+        self.r2 = R2Score()
+
+    def forward(self, input, target):
+        return self.r2(input, target)
 
 class IoUScore(nn.Module):
     def __init__(self):
@@ -70,6 +73,13 @@ class Accuracy(nn.Module):
     def forward(self, tp, fp, fn, tn):
         return smp.metrics.accuracy(tp, fp, fn, tn, reduction="micro")
 
+# ssim from kornia
+class SSIM(nn.Module):
+    def __init__(self):
+        super(SSIM, self).__init__()
+
+    def forward(self, input, target):
+        return kornia.metrics.SSIM(5)(input, target)
 
 def load_metric(metric_name):
     if metric_name == 'IoUScore':
@@ -78,5 +88,10 @@ def load_metric(metric_name):
         return F1Score()
     elif metric_name == 'Accuracy':
         return Accuracy()
+    elif metric_name == 'R2Metric':
+        return R2Metric()
+    elif metric_name == 'SSIM':
+        return SSIM()
+    
     else:
         raise ValueError(f"Metric {metric_name} not implemented")
