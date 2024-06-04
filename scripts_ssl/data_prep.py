@@ -183,8 +183,9 @@ def generate_stratified_folds(input_dir, process_level, learn_type, input_type, 
     # look through input_dir and look for test_files_{i}.pkl files
 
     for i in range(n_splits):
-        train_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_train_files_{i}.pkl'))
-        val_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_val_files_{i}.pkl'))
+        train_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_train_files_{i}_50.pkl'))
+        val_pids = pd.read_pickle(os.path.join(input_dir, f'{learn_type}_val_files_{i}_50.pkl'))
+        print(f'Fold {i} - Train: {len(train_pids)}, Val: {len(val_pids)}')
         train_loader, val_loader = prepare_trainval_loaders(input_dir, process_level, learn_type, input_type, batch_size,train_pids,val_pids)
         yield train_loader, val_loader
 

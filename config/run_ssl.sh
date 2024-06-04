@@ -30,7 +30,7 @@ LR=0.0001
 GAMMA=0.92
 WEIGHT_DECAY=1e-7
 EPOCHS=80
-SSL_TYPE="single_segsiam"
+SSL_TYPE="dual"
 OMEGA=0.5
 EPOCHS_SSL=60
 GAMMA_SSL=0.92
@@ -41,7 +41,7 @@ METRIC_SSL_1="IoUScore"
 METRIC_SSL_2="R2Metric"
 ENCODER_NAME="resnet50"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
-REMARKS="SSL Run. In this run, unfreeze encoder weights in downstream task."
+REMARKS="Downstream task. Dual task. 50% labelled data"
 
 # Create output directory
 mkdir -p $OUT_PATH

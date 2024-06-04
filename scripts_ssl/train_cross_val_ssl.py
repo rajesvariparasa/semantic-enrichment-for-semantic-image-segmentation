@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import time
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
+from model import UNetWithDropout
 
 
 def get_bandnum_classes(band_name):
@@ -33,7 +34,7 @@ def load_best_model(path, **ssl_init_args):
 
     
 # ------- Training functions for semi-supervised learning ------- #
-def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2, metric_t1, metric_t2, siam_segment_bandnum,siam_segment_classes, omega, device):
+def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2, metric_t1, metric_t2, siam_segment_bandnum,siam_segment_classes, log_var_seg , log_var_rec, omega, device):
     model.train()
     running_loss = 0.0
     running_loss_t1 = 0.0
@@ -57,7 +58,8 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
             outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
             loss_t1 = criterion_t1(outputs_t1, labels) 
             loss_t2 = criterion_t2(outputs_t2, features) 
-            loss = (omega* loss_t1) + (1-omega)*loss_t2
+            #loss = (omega* loss_t1) + (1-omega)*loss_t2
+            loss = (torch.exp(-log_var_seg)*loss_t1 + log_var_seg + torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
 
             preds = torch.argmax(outputs_t1, dim=1)
             tp, fp, tn, fn = smp.metrics.get_stats(preds, labels, mode='multiclass', num_classes=siam_segment_classes)
@@ -111,10 +113,11 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
     avg_metric_t1 = running_metric_t1 / num_batches
     avg_metric_t2 = running_metric_t2 / num_batches
 
-    return avg_loss, avg_loss_t1, avg_loss_t2, avg_metric, avg_metric_t1, avg_metric_t2
+    return avg_loss, avg_loss_t1, avg_loss_t2, avg_metric, avg_metric_t1, avg_metric_t2, log_var_seg, log_var_rec
 
-def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes, omega, device):
+def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes,  log_var_seg , log_var_rec, omega, device):
     model.eval()
+   
     running_loss = 0.0
     running_loss_t1 = 0.0
     running_loss_t2 = 0.0
@@ -137,7 +140,8 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
                 outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
                 loss_t1 = criterion_t1(outputs_t1, labels) 
                 loss_t2 = criterion_t2(outputs_t2, features) 
-                loss = (omega* loss_t1) + (1-omega)*loss_t2
+                #loss = (omega* loss_t1) + (1-omega)*loss_t2
+                loss = (torch.exp(-log_var_seg)*loss_t1 + log_var_seg + torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
 
                 preds = torch.argmax(outputs_t1, dim=1)
                 tp, fp, tn, fn = smp.metrics.get_stats(preds, labels, mode='multiclass', num_classes=siam_segment_classes)
@@ -189,7 +193,7 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
     # overall_accuracy = correct_preds / (num_batches* batch_size * 510 * 510)
     return avg_loss, avg_loss_t1,avg_loss_t2, avg_metric, avg_metric_t1, avg_metric_t2  #, overall_accuracy
 
-def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, optimizer, scheduler, criterion_1,criterion_2, metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes, omega, device, patience,out_paths, epochs, ssl_init_args):
+def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, optimizer, scheduler, criterion_1,criterion_2, metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes, omega, device, patience,out_paths, epochs,log_var_seg, log_var_rec , ssl_init_args):
     start = time.time()
     model = model.to(device)
 
@@ -208,7 +212,9 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
     train_acc_history_t2 = []
     val_acc_history_t2 = []
 
-    # -------
+    #--------------------------
+    log_var_rec_history = []
+    log_var_seg_history = []
 
     train_loss_history = [] # this is the combined loss of both tasks
     val_loss_history = []
@@ -230,8 +236,8 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
         
         # train_epoch_loss,train_epoch_loss_t1, train_epoch_loss_t2  = train_epoch_ssl(optimizer=optimizer, data=train_data, **epoch_args)
         # val_epoch_loss,val_epoch_loss_t1, val_epoch_loss_t2 = validate_epoch_ssl(data=val_data, **epoch_args)
-        train_epoch_loss, train_epoch_loss_t1, train_epoch_loss_t2, train_epoch_acc, train_epoch_acc_t1, train_epoch_acc_t2 = train_epoch_ssl(optimizer=optimizer, data=train_data, **epoch_args)
-        val_epoch_loss, val_epoch_loss_t1, val_epoch_loss_t2, val_epoch_acc, val_epoch_acc_t1, val_epoch_acc_t2 = validate_epoch_ssl(data=val_data, **epoch_args)
+        train_epoch_loss, train_epoch_loss_t1, train_epoch_loss_t2, train_epoch_acc, train_epoch_acc_t1, train_epoch_acc_t2,log_var_seg_updated, log_var_rec_updated  = train_epoch_ssl(optimizer=optimizer, data=train_data, log_var_seg=log_var_seg , log_var_rec=log_var_rec, **epoch_args)
+        val_epoch_loss, val_epoch_loss_t1, val_epoch_loss_t2, val_epoch_acc, val_epoch_acc_t1, val_epoch_acc_t2 = validate_epoch_ssl(data=val_data,log_var_seg=log_var_seg_updated , log_var_rec=log_var_rec_updated, **epoch_args)
 
         print(f"\nEpoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
         print(f"Train Acc: {train_epoch_acc:.4f}, Val Acc: {val_epoch_acc:.4f},\n Train Acc T1: {train_epoch_acc_t1:.4f}, Val Acc T1: {val_epoch_acc_t1:.4f}, Train Acc T2: {train_epoch_acc_t2:.4f}, Val Acc T2: {val_epoch_acc_t2:.4f}")
@@ -254,6 +260,9 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
         train_acc_history.append(train_epoch_acc)
         val_acc_history.append(val_epoch_acc)
 
+        log_var_rec_history.append(log_var_rec_updated.item())
+        log_var_seg_history.append(log_var_seg_updated.item())
+
         if scheduler is not None:
             scheduler.step()
         
@@ -273,6 +282,9 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
                                  'val_loss_t2':val_epoch_loss_t2,
                                  'train_acc_t2':train_epoch_acc_t2,
                                  'val_acc_t2':val_epoch_acc_t2,
+
+                                'log_var_seg':log_var_seg_updated.item(),
+                                'log_var_rec':log_var_rec_updated.item()
                                  }
             
             ckpt = {
@@ -295,7 +307,10 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
                     'train_loss_history_t2': train_loss_history_t2,
                     'val_loss_history_t2': val_loss_history_t2,
                     'train_acc_history_t2': train_acc_history_t2,
-                    'val_acc_history_t2': val_acc_history_t2
+                    'val_acc_history_t2': val_acc_history_t2,
+
+                    'log_var_seg_history': log_var_seg_history,
+                    'log_var_rec_history': log_var_rec_history
                 }
             
             torch.save(ckpt, model_out_path)
@@ -322,13 +337,16 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
                       'train_loss_history_t2':train_loss_history_t2,
                       'val_loss_history_t2':val_loss_history_t2,
                       'train_acc_history_t2':train_acc_history_t2,
-                      'val_acc_history_t2':val_acc_history_t2
+                      'val_acc_history_t2':val_acc_history_t2,
+
+                     'log_var_seg_history': log_var_seg_history,
+                     'log_var_rec_history': log_var_rec_history
                       }
     
     trained_model, best_e = load_best_model(model_out_path, **ssl_init_args)
     return trained_model, best_e, model_tracking, best_epoch_metrics, train_duration
 
-def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_args,**model_args_ssl):
+def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_args,log_var_seg_lis,log_var_rec_lis,**model_args_ssl):
     start = time.time()
     sum_train_loss = 0.0
     sum_val_loss = 0.0
@@ -345,6 +363,9 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
     sum_train_acc_t2 = 0.0
     sum_val_acc_t2 = 0.0
 
+    sum_log_var_seg = 0.0
+    sum_log_var_rec = 0.0
+
     fold_histories ={}
     fold_metrics = {}
     trained_models = []
@@ -357,7 +378,9 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
         model,best_e ,model_tracking, best_epoch_metrics, fold_duration = train_model_ssl(model=models[k], optimizer=optimizers[k],
                                                                 scheduler = schedulers[k], fold=k,
                                                                 train_data=train_data, val_data=val_data,
-                                                                ssl_init_args=ssl_init_args, **model_args_ssl)
+                                                                ssl_init_args=ssl_init_args, 
+                                                                log_var_seg=log_var_seg_lis[k], log_var_rec=log_var_rec_lis[k],
+                                                                **model_args_ssl)
         trained_models.append(model)
         best_epoch_nums.append(best_e)
         fold_durations.append(fold_duration)
@@ -377,10 +400,12 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
         sum_train_acc_t2 += best_epoch_metrics['train_acc_t2']
         sum_val_acc_t2 += best_epoch_metrics['val_acc_t2']
 
+        sum_log_var_seg += best_epoch_metrics['log_var_seg']
+        sum_log_var_rec += best_epoch_metrics['log_var_rec']
+
         fold_metrics[f'fold_{k}'] = best_epoch_metrics
         fold_histories[f'fold_{k}'] = model_tracking
         
-    
     total_duration = time.time() - start
     print(f"Training completed for ALL all SSL folds in {total_duration//60:.0f}m {total_duration % 60:.0f}s \n")
 
@@ -406,7 +431,10 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
                             'val_loss_t2':sum_val_loss_t2/n_splits,
                             'train_loss_t2':sum_train_loss_t2/n_splits,
                             'val_acc_t2':sum_val_acc_t2/n_splits,
-                            'train_acc_t2':sum_train_acc_t2/n_splits}
+                            'train_acc_t2':sum_train_acc_t2/n_splits,
+                            
+                            'log_var_seg':sum_log_var_seg/n_splits,
+                            'log_var_rec':sum_log_var_rec/n_splits}
     
     # fold_metrics are the best metrics for each fold
     # cross_val_metrics are the average metrics for all folds    
@@ -455,6 +483,7 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
         plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
         plt.close()
 
+    
     else:
         fig, axs = plt.subplots(3,2, figsize=(12, 15))
         colors = ['b', 'g', 'r']
@@ -488,18 +517,47 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
         axs[2,0].set_title('Loss T2', fontsize=15)
         axs[2,1].set_title('Accuracy Metric T2', fontsize=15)
 
+        max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])
         for ax in axs.flatten():
             ax.tick_params(axis='both', which='major', labelsize=12)
             ax.set_xlabel('Epochs', fontsize=12)
             ax.set_ylabel('Loss', fontsize=12)
             ax.legend()
-
-        max_x_ticks = max([len(history['train_loss_history']) for history in fold_histories.values()])
-        for ax in axs.flatten():
             ax.set_xticks(np.arange(0, max_x_ticks, step = 5))
 
         plt.tight_layout()
         plt.savefig(os.path.join(out_path, 'training_curves_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
+        plt.close()
+
+        #--------------------------Plot weights and logvariance
+        weights_seg = [np.exp(-log_var) for log_var in history['log_var_seg_history']]
+        weights_rec = [np.exp(-log_var) for log_var in history['log_var_rec_history']]
+        fig, axs = plt.subplots(1,2, figsize=(12, 5))
+        colors = ['b', 'g', 'r']
+        for i, (fold, history) in enumerate(fold_histories.items()):
+            axs[0].plot(history['log_var_seg_history'], label=f'Fold {i+1} Segmentation', color=colors[i])
+            axs[0].plot(history['log_var_rec_history'], label=f'Fold {i+1} Reconstruction', color=colors[i], linestyle='--')
+            axs[0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
+
+            axs[1].plot(weights_seg, label=f'Fold {i+1} Segmentation', color=colors[i])
+            axs[1].plot(weights_rec, label=f'Fold {i+1} Reconstruction', color=colors[i], linestyle='--')
+            axs[1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
+
+        # set title, labels and ticks., ticks params
+        for ax in axs:
+            ax.tick_params(axis='both', which='major', labelsize=12)
+            ax.set_xticks(np.arange(0, max_x_ticks, step = 5))
+            ax.set_xlabel('Epochs', fontsize=12)
+            ax.legend()
+
+        axs[0].set_title('Log Variance', fontsize=15)
+        axs[0].set_ylabel('Log Variance', fontsize=12  )
+
+        axs[1].set_title('Weights', fontsize=15)
+        axs[1].set_ylabel('Weight', fontsize=12)
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_path, 'weights_log_variance_ssl.png'), dpi=800, pad_inches=0.2, bbox_inches='tight')
         plt.close()
 
     #save fold_metrics in csv
@@ -510,8 +568,6 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
     #save cross_val_metrics in csv
     metrics = pd.DataFrame(cross_val_metrics, index=[0])
     metrics.to_csv(os.path.join(out_path, 'train_cross_val_metrics_ssl.csv'), index=False, float_format='%.4f')
-
-
 
 # def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cross_val_metrics, out_path):
        

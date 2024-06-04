@@ -1,6 +1,9 @@
 import argparse
 import torch
 import os
+import random
+import numpy as np
+
 
 import segmentation_models_pytorch as smp
 from data_prep import generate_stratified_folds, prepare_test_loader
@@ -9,6 +12,7 @@ from train_cross_val import fit_kfolds, save_training_curves
 from train_cross_val_ssl import get_bandnum_classes, fit_kfolds_ssl, save_training_curves_ssl
 from predict import predict
 from losses_metrics import load_loss, load_metric
+from model import UNetWithDropout
 
 
 def parse_args():
@@ -36,10 +40,18 @@ def parse_args():
     parser.add_argument('--siam_gran_ssl', type=str, default='siam_18', help='Granularity of the siam model for SSL')
     parser.add_argument('--out_path', type=str, required=True, help='Path to the outputs directory')
     parser.add_argument('--encoder_name', type=str, default='resnet50', help='Encoder name for the model')
-
     return parser.parse_args()
 
 def main():
+
+    # set random seeds
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    # torch.backends.cudnn.deterministic = True  # if using GPU
+    # torch.backends.cudnn.benchmark = False
+
     args = parse_args()
     print(args)
     #device = torch.device('cpu')
@@ -64,9 +76,22 @@ def main():
                      'encoder_weights':None, 'activation':None, 'add_reconstruction_head':True}
     ssl_models = [smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args)] # Initialize model
     
-    optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
+    # initialize log variance parameters
+    log_var_seg_lis = [torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device)]
+    log_var_rec_lis = [torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device)]
+
+    # Initialize model, optimizer, scheduler and loss function
+    if args.ssl_type == 'dual': 
+        model_update_params = [list(ssl_models[i].parameters()) + [log_var_seg_lis[i] ,log_var_rec_lis[i]] for i in range(3)]
+        optimizers_ssl = [torch.optim.Adam(model_update_params[0], lr=args.lr, weight_decay=args.weight_decay),
+                    torch.optim.Adam(model_update_params[1], lr=args.lr, weight_decay=args.weight_decay),
+                    torch.optim.Adam(model_update_params[2], lr=args.lr, weight_decay=args.weight_decay)]
+    else:
+
+        optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
+    
     schedulers_ssl = [torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[0], gamma=ssl_config_args['gamma_ssl']),
                         torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[1], gamma=ssl_config_args['gamma_ssl']),
                         torch.optim.lr_scheduler.ExponentialLR(optimizers_ssl[2], gamma=ssl_config_args['gamma_ssl'])] # Initialize scheduler
@@ -83,7 +108,9 @@ def main():
     base_args_ssl = {'input_dir':args.input_dir, 'process_level':args.process_level, 'learn_type':'ssl',
                         'input_type':args.input_type, 'batch_size':args.batch_size}
     
-    generator_ssl = generate_stratified_folds(**base_args_ssl)
+    #----commented on 31st May 2024
+    #generator_ssl = generate_stratified_folds(**base_args_ssl)
+    #----commented paused on 31st May 2024
     
     # Train model
     model_args_ssl = {'batch_size': args.batch_size,'patience': args.patience,
@@ -93,54 +120,83 @@ def main():
                         'device': device,'epochs':ssl_config_args['epochs_ssl'],'out_paths': (big_outputs_path, args.out_path),
                         'siam_segment_bandnum': siam_segment_bandnum, 'siam_segment_classes': siam_segment_classes}
     
-    print(f"\nSSL Training Begins now...")
-    trained_ssl_models, best_epoch_nums_ssl, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
-                                                                                                    optimizers=optimizers_ssl, schedulers=schedulers_ssl, 
-                                                                                                    n_splits=3, ssl_init_args= ssl_init_args, **model_args_ssl)
-    # --------------------------------------------------------------------------------------------------------
-    # Print results
-    print("Best epoch metrics for each fold: ", fold_metrics_ssl)
-    print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics_ssl)
+    #-------commented on 31st May 2024
+    # print(f"\nSSL Training Begins now...")
+    # trained_ssl_models, best_epoch_nums_ssl, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
+    #                                                                                                 optimizers=optimizers_ssl, schedulers=schedulers_ssl, n_splits=3,
+    #                                                                                                 log_var_seg_lis=log_var_seg_lis, log_var_rec_lis=log_var_rec_lis,
+    #                                                                                                 ssl_init_args= ssl_init_args, **model_args_ssl)
+    # # --------------------------------------------------------------------------------------------------------
+    # # Print results
+    # print("Best epoch metrics for each fold: ", fold_metrics_ssl)
+    # print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics_ssl)
 
-    # Save training curves
-    save_training_curves_ssl(best_epoch_nums= best_epoch_nums_ssl, fold_histories=fold_histories_ssl, fold_metrics=fold_metrics_ssl,
-                             cross_val_metrics=cross_val_metrics_ssl, out_path= args.out_path)
+    # # Save training curves
+    # save_training_curves_ssl(best_epoch_nums= best_epoch_nums_ssl, fold_histories=fold_histories_ssl, fold_metrics=fold_metrics_ssl,
+    #                          cross_val_metrics=cross_val_metrics_ssl, out_path= args.out_path)
     
-    # ------------------------------------Weights Transfer---------------------------------------------------
-    # --------------------------------------------------------------------------------------------------------
+    # # ------------------------------------Weights Transfer---------------------------------------------------
+    # # --------------------------------------------------------------------------------------------------------
 
-    # PICK the model with least loss from the fold metrics
-    best_fold_key = int(min(fold_metrics_ssl, key=lambda k: fold_metrics_ssl[k]['val_loss']).split('_')[1])
-    print(f"\nBest fold: {best_fold_key}")
+    # # PICK the model with least loss from the fold metrics
+    # best_fold_key = int(min(fold_metrics_ssl, key=lambda k: fold_metrics_ssl[k]['val_loss']).split('_')[1])
+    # print(f"\nBest fold: {best_fold_key}")
+
+    #-----------commented paused here on 31st May 2024    
 
     if args.input_type == 's2':
         num_channels = 10       # Sentinel-2 spectral bands
     elif 'siam' in args.input_type:
         num_channels = 3        # RGB channels
-    
-    # Transfer learning from SSL resnet encoder to new instance of UNet for downstream task
-    csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
-                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
-    models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model
 
-    # Copy the all weights from the best fold model, skip head weights
-    models[0].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
-    models[1].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
-    models[2].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # Transfer learning from SSL resnet encoder to new instance of UNet for downstream task
+    # ------------------commented resumes here on 31st May 2024
+    #csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
+    #                 'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
+    #models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model
+    # ------------------commented paused here on 31st May 2024
+
+    # -----code added on 31st May 2024
+    csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
+                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False, 'dropout_prob':0.5}
+    models = [UNetWithDropout(**csl_init_args), UNetWithDropout(**csl_init_args), UNetWithDropout(**csl_init_args)] # Initialize model
+    path = '/share/projects/siamdl/outputs/45090_20240529_dual/model_outputs/fold_2_best_model_ssl.pth'
+    
+    # best recon: '/share/projects/siamdl/outputs/44999_20240527_single_recon/model_outputs/fold_0_best_model_ssl.pth'
+    # best siam: '/share/projects/siamdl/outputs/45000_20240527_single_segsiam/model_outputs/fold_1_best_model_ssl.pth'
+    # best dual: '/share/projects/siamdl/outputs/45090_20240529_dual/model_outputs/fold_2_best_model_ssl.pth'
+
+    ssl_model = smp.Unet(**ssl_init_args)
+    ckpt = torch.load(path)
+    ssl_model.load_state_dict(ckpt['model_state_dict'])
+    print("Loaded the best model from the best fold of the pretext task")
+
+    models[0].encoder.load_state_dict(ssl_model.encoder.state_dict())
+    models[1].encoder.load_state_dict(ssl_model.encoder.state_dict())
+    models[2].encoder.load_state_dict(ssl_model.encoder.state_dict())
 
     # copy decoder weights except the head weights
-    models[0].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
-    models[1].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
-    models[2].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    models[0].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    models[1].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    models[2].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    #----- code ends here - 31st May 2024
 
-    # models[0].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
-    # models[1].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
-    # models[2].load_state_dict(trained_ssl_models[best_fold_key].state_dict())
+    # ---------comented resumes here on 31st May 2024
+    # # Copy the all weights from the best fold model, skip head weights
+    # models[0].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # models[1].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # models[2].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
 
-    # DELETING TRAINED MODELS TO FREE UP MEMORY
-    del trained_ssl_models
+    # # copy decoder weights except the head weights
+    # models[0].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    # models[1].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    # models[2].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
 
-    # Freeze the encoder weights, use decoder weights for downstream task initialization
+    # # DELETING TRAINED MODELS TO FREE UP MEMORY
+    # del trained_ssl_models
+    #----------------commented paused here on 31st May 2024
+
+    # Freeze/unfreeze the encoder weights, based on finetuning/feature extraction
     # for param in models[0].encoder.parameters():
     #     param.requires_grad = False
     # for param in models[1].encoder.parameters():
@@ -150,20 +206,8 @@ def main():
     # -------------------------------------Train downstream segmentation task---------------------------------------------
     # --------------------------------------------------------------------------------------------------------------------
 
-    # initialize log variance parameters
-    log_var_seg_lis = [torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device)]
-    log_var_rec_lis = [torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device), torch.zeros(1, requires_grad=True, device=device)]
 
-
-    # Initialize model, optimizer, scheduler and loss function
-    
-    if args.ssl_type == 'dual': 
-        model_update_params = [list(models[i].parameters()) + [log_var_seg_lis[i] ,log_var_rec_lis[i]] for i in range(3)]
-        optimizers = [torch.optim.Adam(model_update_params[0], lr=args.lr, weight_decay=args.weight_decay),
-                    torch.optim.Adam(model_update_params[1], lr=args.lr, weight_decay=args.weight_decay),
-                    torch.optim.Adam(model_update_params[2], lr=args.lr, weight_decay=args.weight_decay)]
-    else:
-        optimizers = [torch.optim.Adam(models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
+    optimizers = [torch.optim.Adam(models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                     torch.optim.Adam(models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                     torch.optim.Adam(models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)]
     schedulers = [torch.optim.lr_scheduler.ExponentialLR(optimizers[0], gamma=args.gamma),
@@ -188,9 +232,7 @@ def main():
     print(f"\nDownstream Segmentation Training Begins now...")
     
     trained_models, best_epoch_nums,foldwise_histories, foldwise_best_epoch_metrics, cross_val_metrics = fit_kfolds(models=models, generator=generator,optimizers=optimizers,
-                                                                                schedulers=schedulers, n_splits=3, csl_init_args=csl_init_args, 
-                                                                                log_var_seg_lis=log_var_seg_lis, log_var_rec_lis=log_var_rec_lis,
-                                                                                **model_args)
+                                                                                schedulers=schedulers, n_splits=3, csl_init_args=csl_init_args,**model_args)
     
     # Print results
     print("Best epoch metrics for each fold: ", foldwise_best_epoch_metrics, "\n")

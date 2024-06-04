@@ -1,6 +1,8 @@
 import argparse
 import torch
 import os
+import random
+import numpy as np
 
 #from milesial_unet.unet_model import UNet
 import segmentation_models_pytorch as smp
@@ -34,6 +36,14 @@ def main():
     #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')       #device = torch.device('cpu')
     print(f"Device: {device}")
+
+    # set random seeds
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    # torch.backends.cudnn.deterministic = True  
+    # torch.backends.cudnn.benchmark = False
 
     # Create output directory for storage heavy files. For smaller outputs, the default out_path is used.
     big_outputs_path = os.path.join(os.path.split(os.path.split(args.out_path)[0])[0], 'model_outputs/')

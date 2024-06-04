@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 import time
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
+from model import UNetWithDropout
 
 def load_best_model(model_out_path, **csl_init_args):
-    model = smp.Unet(**csl_init_args) # Initialize model
+    model = UNetWithDropout(**csl_init_args) # Initialize model
     ckpt = torch.load(model_out_path)
     model.load_state_dict(ckpt['model_state_dict'])
     best_e = ckpt['epoch']  

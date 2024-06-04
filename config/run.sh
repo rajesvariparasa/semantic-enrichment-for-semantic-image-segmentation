@@ -33,7 +33,7 @@ GAMMA=0.92
 WEIGHT_DECAY=1e-7
 EPOCHS=80
 ENCODER_NAME="resnet50"
-REMARKS="CSL Run. Early stopping reintroduced."
+REMARKS="CSL Run. 50% data. Multispectral input"
 
 
 # Create output directory
