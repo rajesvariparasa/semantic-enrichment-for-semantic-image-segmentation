@@ -141,7 +141,7 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
                 loss_t1 = criterion_t1(outputs_t1, labels) 
                 loss_t2 = criterion_t2(outputs_t2, features) 
                 #loss = (omega* loss_t1) + (1-omega)*loss_t2
-                loss = (torch.exp(-log_var_seg)*loss_t1 + log_var_seg + torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
+                loss = 0.5*(torch.exp(-log_var_seg)*loss_t1 + log_var_seg + 0.5*torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
 
                 preds = torch.argmax(outputs_t1, dim=1)
                 tp, fp, tn, fn = smp.metrics.get_stats(preds, labels, mode='multiclass', num_classes=siam_segment_classes)
@@ -530,8 +530,8 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
         plt.close()
 
         #--------------------------Plot weights and logvariance
-        weights_seg = [np.exp(-log_var) for log_var in history['log_var_seg_history']]
-        weights_rec = [np.exp(-log_var) for log_var in history['log_var_rec_history']]
+        weights_seg = [0.5*np.exp(-log_var) for log_var in history['log_var_seg_history']]
+        weights_rec = [0.5*np.exp(-log_var) for log_var in history['log_var_rec_history']]
         fig, axs = plt.subplots(1,2, figsize=(12, 5))
         colors = ['b', 'g', 'r']
         for i, (fold, history) in enumerate(fold_histories.items()):

@@ -41,7 +41,7 @@ METRIC_SSL_1="IoUScore"
 METRIC_SSL_2="R2Metric"
 ENCODER_NAME="resnet50"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
-REMARKS="Downstream task. Dual task. 50% labelled data"
+REMARKS="Rerunning dual task learning with nn.Parameter initialization - uncertainty weighting"
 
 # Create output directory
 mkdir -p $OUT_PATH
