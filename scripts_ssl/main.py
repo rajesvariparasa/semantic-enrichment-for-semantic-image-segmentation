@@ -12,7 +12,7 @@ from train_cross_val import fit_kfolds, save_training_curves
 from train_cross_val_ssl import get_bandnum_classes, fit_kfolds_ssl, save_training_curves_ssl
 from predict import predict
 from losses_metrics import load_loss, load_metric
-from model import UNetWithDropout
+from model import UNetWithDropout, UNetWithDropout_AuxiTask_v1, SMP_Unet_Multitask_v0
 
 
 def parse_args():
@@ -73,22 +73,24 @@ def main():
 
     # Initialize SSL multitask-model UNet with resnet encoder
     ssl_init_args = {'encoder_name':args.encoder_name, 'in_channels':10, 'classes':siam_segment_classes, 
-                     'encoder_weights':None, 'activation':None, 'add_reconstruction_head':True}
-    ssl_models = [smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args)] # Initialize model
+                     'encoder_weights':None}
+    #ssl_models = [smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args), smp.Unet(**ssl_init_args)] # Initialize model
     
-    # initialize log variance parameters
-    log_var_seg_lis = [torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))]
-    log_var_rec_lis = [torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))]
+    ssl_models = [SMP_Unet_Multitask_v0(**ssl_init_args), SMP_Unet_Multitask_v0(**ssl_init_args), SMP_Unet_Multitask_v0(**ssl_init_args)] # Initialize model
+
+    # # initialize log variance parameters - now integrated within Unet definition
+    # log_var_seg_lis = [torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))]
+    # log_var_rec_lis = [torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True)), torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))]
 
     # Initialize model, optimizer, scheduler and loss function
-    if args.ssl_type == 'dual': 
-        model_update_params = [list(ssl_models[i].parameters()) + [log_var_seg_lis[i] ,log_var_rec_lis[i]] for i in range(3)]
-        optimizers_ssl = [torch.optim.Adam(model_update_params[0], lr=args.lr, weight_decay=args.weight_decay),
-                    torch.optim.Adam(model_update_params[1], lr=args.lr, weight_decay=args.weight_decay),
-                    torch.optim.Adam(model_update_params[2], lr=args.lr, weight_decay=args.weight_decay)]
-    else:
+    # if args.ssl_type == 'dual': 
+    #     model_update_params = [list(ssl_models[i].parameters()) + [log_var_seg_lis[i] ,log_var_rec_lis[i]] for i in range(3)]
+    #     optimizers_ssl = [torch.optim.Adam(model_update_params[0], lr=args.lr, weight_decay=args.weight_decay),
+    #                 torch.optim.Adam(model_update_params[1], lr=args.lr, weight_decay=args.weight_decay),
+    #                 torch.optim.Adam(model_update_params[2], lr=args.lr, weight_decay=args.weight_decay)]
+    # else:
 
-        optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
+    optimizers_ssl = [torch.optim.Adam(ssl_models[0].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[1].parameters(), lr=args.lr, weight_decay=args.weight_decay),
                         torch.optim.Adam(ssl_models[2].parameters(), lr=args.lr, weight_decay=args.weight_decay)] # Initialize optimizer
     
@@ -124,7 +126,6 @@ def main():
     print(f"\nSSL Training Begins now...")
     trained_ssl_models, best_epoch_nums_ssl, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
                                                                                                     optimizers=optimizers_ssl, schedulers=schedulers_ssl, n_splits=3,
-                                                                                                    log_var_seg_lis=log_var_seg_lis, log_var_rec_lis=log_var_rec_lis,
                                                                                                     ssl_init_args= ssl_init_args, **model_args_ssl)
     # --------------------------------------------------------------------------------------------------------
     # Print results
@@ -215,7 +216,7 @@ def main():
                   torch.optim.lr_scheduler.ExponentialLR(optimizers[2], gamma=args.gamma)] 
 
     #criterion = torch.nn.CrossEntropyLoss()  
-    criterion = load_loss(loss_name=args.loss_ssl_1)  # Initialize loss function - keeping it same as segmentation task in pretext task
+    criterion = load_loss(loss_name='DiceLoss')  # Initialize loss function - keeping it same as segmentation task in pretext task
     metrics = {'Accuracy': load_metric(metric_name='Accuracy'),
                'IoUScore': load_metric(metric_name = 'IoUScore'),
                'F1Score': load_metric(metric_name = 'F1Score')} # Initialize metrics

@@ -8,7 +8,8 @@ import time
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
 from model import UNetWithDropout
-
+from model import SMP_Unet_Multitask_v0
+from losses_metrics import MultiTaskLoss
 
 def get_bandnum_classes(band_name):
 
@@ -26,7 +27,7 @@ def get_bandnum_classes(band_name):
 def load_best_model(path, **ssl_init_args):
    # ssl_init_args = {'encoder_name':'resnet50', 'in_channels':10, 'classes':49, 
    #                  'encoder_weights':None, 'activation':None, 'add_reconstruction_head':True}
-    model = smp.Unet(**ssl_init_args)
+    model =SMP_Unet_Multitask_v0(**ssl_init_args)
     ckpt = torch.load(path)
     model.load_state_dict(ckpt['model_state_dict'])
     best_e = ckpt['epoch']
@@ -34,7 +35,7 @@ def load_best_model(path, **ssl_init_args):
 
     
 # ------- Training functions for semi-supervised learning ------- #
-def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2, metric_t1, metric_t2, siam_segment_bandnum,siam_segment_classes, log_var_seg , log_var_rec, omega, device):
+def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2, metric_t1, metric_t2, siam_segment_bandnum,siam_segment_classes, omega, device):
     model.train()
     running_loss = 0.0
     running_loss_t1 = 0.0
@@ -46,6 +47,9 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
     #correct_preds = 0
     num_batches = len(data)
 
+    if ssl_type == 'dual':
+        multitask_criterion = MultiTaskLoss()
+
     for _,batch in enumerate(tqdm(data, desc='Training', leave=False)): # for each batch
         #print(f"Batch {i}")
         features, labels,_ = batch
@@ -54,12 +58,12 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
         features, labels = features.to(device), labels[:,siam_segment_bandnum,:,:].to(device)
         optimizer.zero_grad()
 
-        if ssl_type == 'dual':                              
-            outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
-            loss_t1 = criterion_t1(outputs_t1, labels) 
-            loss_t2 = criterion_t2(outputs_t2, features) 
-            #loss = (omega* loss_t1) + (1-omega)*loss_t2
-            loss = (torch.exp(-log_var_seg)*loss_t1 + log_var_seg + torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
+        if ssl_type == 'dual':   
+            #print(len(model(features)))                           
+            outputs_t1, outputs_t2, log_vars = model(features)   
+            #task 1 - siam prediction and task 2 - reflectance reconstruction
+            log_var_seg, log_var_rec = log_vars[0], log_vars[1]
+            loss, loss_t1, loss_t2 = multitask_criterion(outputs_t1, outputs_t2, labels, features, log_vars, criterion_t1, criterion_t2)
 
             preds = torch.argmax(outputs_t1, dim=1)
             tp, fp, tn, fn = smp.metrics.get_stats(preds, labels, mode='multiclass', num_classes=siam_segment_classes)
@@ -68,7 +72,7 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
             acc = acc_t1 + acc_t2
         
         elif ssl_type == 'single_segsiam':                                    
-            outputs_t1, _ = model(features)      #task 1 - siam prediction
+            outputs_t1, _,_ = model(features)      #task 1 - siam prediction
             loss_t1 = criterion_t1(outputs_t1, labels) 
             loss_t2 = torch.Tensor([0])
             loss = loss_t1                 
@@ -80,7 +84,7 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
             acc = acc_t1     
         
         elif ssl_type == 'single_recon':
-            _, outputs_t2 = model(features)
+            _, outputs_t2,_ = model(features)
             loss_t1 = torch.Tensor([0])
             loss_t2 = criterion_t2(outputs_t2, features) #task 2 - predict input bands back
             loss = loss_t2
@@ -115,7 +119,7 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
 
     return avg_loss, avg_loss_t1, avg_loss_t2, avg_metric, avg_metric_t1, avg_metric_t2, log_var_seg, log_var_rec
 
-def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes,  log_var_seg , log_var_rec, omega, device):
+def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes,  omega, device):
     model.eval()
    
     running_loss = 0.0
@@ -128,6 +132,9 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
 
     #correct_preds = 0
     num_batches = len(data)
+    if ssl_type == 'dual':
+        multitask_criterion = MultiTaskLoss()
+
  
     with torch.no_grad():
         for _,batch in enumerate(tqdm(data, desc='Validation', leave=False)):
@@ -137,11 +144,10 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
             features, labels = features.to(device), labels[:,siam_segment_bandnum,:,:].to(device)
 
             if ssl_type == 'dual':                              
-                outputs_t1, outputs_t2 = model(features)   #task 1 - siam prediction and task 2 - predict input bands back
-                loss_t1 = criterion_t1(outputs_t1, labels) 
-                loss_t2 = criterion_t2(outputs_t2, features) 
-                #loss = (omega* loss_t1) + (1-omega)*loss_t2
-                loss = 0.5*(torch.exp(-log_var_seg)*loss_t1 + log_var_seg + 0.5*torch.exp(-log_var_rec)*loss_t2 + log_var_rec) # combined loss
+                outputs_t1, outputs_t2, log_vars = model(features)   
+                #task 1 - siam prediction and task 2 - reflectance reconstruction
+                #log_var_seg, log_var_rec = log_vars[0], log_vars[1]
+                loss, loss_t1, loss_t2 = multitask_criterion(outputs_t1, outputs_t2, labels, features, log_vars, criterion_t1, criterion_t2)
 
                 preds = torch.argmax(outputs_t1, dim=1)
                 tp, fp, tn, fn = smp.metrics.get_stats(preds, labels, mode='multiclass', num_classes=siam_segment_classes)
@@ -150,7 +156,7 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
                 acc = acc_t1 + acc_t2
             
             elif ssl_type == 'single_segsiam':                                    
-                outputs_t1, _ = model(features)      #task 1 - siam prediction
+                outputs_t1, _,_ = model(features)      #task 1 - siam prediction
                 loss_t1 = criterion_t1(outputs_t1, labels) 
                 loss_t2 = torch.Tensor([0])
                 loss = loss_t1        
@@ -162,7 +168,7 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
                 acc = acc_t1              
             
             elif ssl_type == 'single_recon':
-                _, outputs_t2 = model(features)
+                _, outputs_t2,_ = model(features)
                 loss_t2 = criterion_t2(outputs_t2, features) #task 2 - predict input bands back
                 loss_t1 = torch.Tensor([0])
                 loss = loss_t2
@@ -193,7 +199,7 @@ def validate_epoch_ssl(model, data, ssl_type, criterion_t1, criterion_t2,metric_
     # overall_accuracy = correct_preds / (num_batches* batch_size * 510 * 510)
     return avg_loss, avg_loss_t1,avg_loss_t2, avg_metric, avg_metric_t1, avg_metric_t2  #, overall_accuracy
 
-def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, optimizer, scheduler, criterion_1,criterion_2, metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes, omega, device, patience,out_paths, epochs,log_var_seg, log_var_rec , ssl_init_args):
+def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, optimizer, scheduler, criterion_1,criterion_2, metric_t1, metric_t2, siam_segment_bandnum, siam_segment_classes, omega, device, patience,out_paths, epochs, ssl_init_args):
     start = time.time()
     model = model.to(device)
 
@@ -236,12 +242,14 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
         
         # train_epoch_loss,train_epoch_loss_t1, train_epoch_loss_t2  = train_epoch_ssl(optimizer=optimizer, data=train_data, **epoch_args)
         # val_epoch_loss,val_epoch_loss_t1, val_epoch_loss_t2 = validate_epoch_ssl(data=val_data, **epoch_args)
-        train_epoch_loss, train_epoch_loss_t1, train_epoch_loss_t2, train_epoch_acc, train_epoch_acc_t1, train_epoch_acc_t2,log_var_seg_updated, log_var_rec_updated  = train_epoch_ssl(optimizer=optimizer, data=train_data, log_var_seg=log_var_seg , log_var_rec=log_var_rec, **epoch_args)
-        val_epoch_loss, val_epoch_loss_t1, val_epoch_loss_t2, val_epoch_acc, val_epoch_acc_t1, val_epoch_acc_t2 = validate_epoch_ssl(data=val_data,log_var_seg=log_var_seg_updated , log_var_rec=log_var_rec_updated, **epoch_args)
+        train_epoch_loss, train_epoch_loss_t1, train_epoch_loss_t2, train_epoch_acc, train_epoch_acc_t1, train_epoch_acc_t2,log_var_seg_updated, log_var_rec_updated  = train_epoch_ssl(optimizer=optimizer, data=train_data, **epoch_args)
+        val_epoch_loss, val_epoch_loss_t1, val_epoch_loss_t2, val_epoch_acc, val_epoch_acc_t1, val_epoch_acc_t2 = validate_epoch_ssl(data=val_data, **epoch_args)
 
-        print(f"\nEpoch {epoch+1}/{epochs} => Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
+        print(f"\nEpoch {epoch+1}/{epochs} =>")
+        print(f"Train Loss: {train_epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f},\n Train Loss T1: {train_epoch_loss_t1:.4f}, Val Loss T1: {val_epoch_loss_t1:.4f}, Train Loss T2: {train_epoch_loss_t2:.4f}, Val Loss T2: {val_epoch_loss_t2:.4f}")
         print(f"Train Acc: {train_epoch_acc:.4f}, Val Acc: {val_epoch_acc:.4f},\n Train Acc T1: {train_epoch_acc_t1:.4f}, Val Acc T1: {val_epoch_acc_t1:.4f}, Train Acc T2: {train_epoch_acc_t2:.4f}, Val Acc T2: {val_epoch_acc_t2:.4f}")
-        
+        print(f"Log Var Seg: {log_var_seg_updated.item():.4f}, Log Var Rec: {log_var_rec_updated.item():.4f}")
+
         train_loss_history_t1.append(train_epoch_loss_t1)
         val_loss_history_t1.append(val_epoch_loss_t1)
 
@@ -346,7 +354,7 @@ def train_model_ssl(model, fold, train_data, val_data, ssl_type, batch_size, opt
     trained_model, best_e = load_best_model(model_out_path, **ssl_init_args)
     return trained_model, best_e, model_tracking, best_epoch_metrics, train_duration
 
-def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_args,log_var_seg_lis,log_var_rec_lis,**model_args_ssl):
+def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_args,**model_args_ssl):
     start = time.time()
     sum_train_loss = 0.0
     sum_val_loss = 0.0
@@ -378,9 +386,7 @@ def fit_kfolds_ssl(models,generator, optimizers, schedulers, n_splits, ssl_init_
         model,best_e ,model_tracking, best_epoch_metrics, fold_duration = train_model_ssl(model=models[k], optimizer=optimizers[k],
                                                                 scheduler = schedulers[k], fold=k,
                                                                 train_data=train_data, val_data=val_data,
-                                                                ssl_init_args=ssl_init_args, 
-                                                                log_var_seg=log_var_seg_lis[k], log_var_rec=log_var_rec_lis[k],
-                                                                **model_args_ssl)
+                                                                ssl_init_args=ssl_init_args, **model_args_ssl)
         trained_models.append(model)
         best_epoch_nums.append(best_e)
         fold_durations.append(fold_duration)
@@ -448,7 +454,7 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
     for key, history in fold_histories.items():
         np.save(os.path.join(dir_hist, f'{key}_history.npy'), history)
 
-    # if sum of t1 accuracy history or t2 accuracy history is zero, then 1 by 2 plot, else 2 by 3 plot. check with in one fold
+    # check dual or single ssl: if sum of t1 accuracy history or t2 accuracy history is zero, then 1 by 2 plot, else 2 by 3 plot. check with in one fold
     if np.sum(fold_histories['fold_0']['train_acc_history_t1']) == 0 or np.sum(fold_histories['fold_0']['train_acc_history_t2']) == 0:
         fig, axs = plt.subplots(1,2, figsize=(12, 5))
         colors = ['b', 'g', 'r']
@@ -530,8 +536,8 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
         plt.close()
 
         #--------------------------Plot weights and logvariance
-        weights_seg = [0.5*np.exp(-log_var) for log_var in history['log_var_seg_history']]
-        weights_rec = [0.5*np.exp(-log_var) for log_var in history['log_var_rec_history']]
+        weights_seg = [1/np.exp(log_var) for log_var in history['log_var_seg_history']]
+        weights_rec = [1/2*np.exp(log_var) for log_var in history['log_var_rec_history']]
         fig, axs = plt.subplots(1,2, figsize=(12, 5))
         colors = ['b', 'g', 'r']
         for i, (fold, history) in enumerate(fold_histories.items()):
