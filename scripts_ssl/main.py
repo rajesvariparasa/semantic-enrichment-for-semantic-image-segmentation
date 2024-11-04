@@ -123,27 +123,42 @@ def main():
                         'siam_segment_bandnum': siam_segment_bandnum, 'siam_segment_classes': siam_segment_classes}
     
     #-------commented on 31st May 2024
-    print(f"\nSSL Training Begins now...")
-    trained_ssl_models, best_epoch_nums_ssl, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
-                                                                                                    optimizers=optimizers_ssl, schedulers=schedulers_ssl, n_splits=3,
-                                                                                                    ssl_init_args= ssl_init_args, **model_args_ssl)
-    # --------------------------------------------------------------------------------------------------------
-    # Print results
-    print("Best epoch metrics for each fold: ", fold_metrics_ssl)
-    print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics_ssl)
+    # print(f"\nSSL Training Begins now...")
+    # trained_ssl_models, best_epoch_nums_ssl, fold_histories_ssl, fold_metrics_ssl, cross_val_metrics_ssl = fit_kfolds_ssl(models=ssl_models, generator=generator_ssl,
+    #                                                                                                 optimizers=optimizers_ssl, schedulers=schedulers_ssl, n_splits=3,
+    #                                                                                                 ssl_init_args= ssl_init_args, **model_args_ssl)
+    # # --------------------------------------------------------------------------------------------------------
+    # # Print results
+    # print("Best epoch metrics for each fold: ", fold_metrics_ssl)
+    # print("Cross-validation metrics (Averaged over folds): ", cross_val_metrics_ssl)
 
-    # Save training curves
-    save_training_curves_ssl(best_epoch_nums= best_epoch_nums_ssl, fold_histories=fold_histories_ssl, fold_metrics=fold_metrics_ssl,
-                             cross_val_metrics=cross_val_metrics_ssl, out_path= args.out_path)
+    # # Save training curves
+    # save_training_curves_ssl(best_epoch_nums= best_epoch_nums_ssl, fold_histories=fold_histories_ssl, fold_metrics=fold_metrics_ssl,
+    #                          cross_val_metrics=cross_val_metrics_ssl, out_path= args.out_path)
     
-    # ------------------------------------Weights Transfer---------------------------------------------------
-    # --------------------------------------------------------------------------------------------------------
+    # # ------------------------------------Weights Transfer when running both SSL and downstream---------------------------------------------------
+    # # --------------------------------------------------------------------------------------------------------
 
-    # PICK the model with least loss from the fold metrics
-    best_fold_key = int(min(fold_metrics_ssl, key=lambda k: fold_metrics_ssl[k]['val_loss']).split('_')[1])
-    print(f"\nBest fold: {best_fold_key}")
+    # # PICK the model with least loss from the fold metrics
+    # best_fold_key = int(min(fold_metrics_ssl, key=lambda k: fold_metrics_ssl[k]['val_loss']).split('_')[1])
+    # print(f"\nBest fold: {best_fold_key}")
 
     #-----------commented paused here on 31st May 2024    
+
+    # -------------------------------Weights Transfer when running only downstream---------------------------------------------------------
+    # path to best model from the best fold of the pretext task
+    path = '/share/projects/siamdl/outputs/45452_20240606_dual/model_outputs/fold_0_best_model_ssl.pth'
+
+    
+    # # best recon: '/share/projects/siamdl/outputs/45489_20240607_single_recon/model_outputs/fold_0_best_model_ssl.pth'
+    # # best siam: '/share/projects/siamdl/outputs/45000_20240527_single_segsiam/model_outputs/fold_1_best_model_ssl.pth'
+    # # best dual: '/share/projects/siamdl/outputs/45452_20240606_dual/model_outputs/fold_0_best_model_ssl.pth'
+
+    ssl_model = SMP_Unet_Multitask_v0(**ssl_init_args)
+    ckpt = torch.load(path)
+    ssl_model.load_state_dict(ckpt['model_state_dict'])
+    print("Loaded the best model from the best fold of the pretext task")
+    ## ----- SSL model prep ends here
 
     if args.input_type == 's2':
         num_channels = 10       # Sentinel-2 spectral bands
@@ -151,50 +166,35 @@ def main():
         num_channels = 3        # RGB channels
 
     # Transfer learning from SSL resnet encoder to new instance of UNet for downstream task
-    # ------------------commented resumes here on 31st May 2024
-    # csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
-    #                 'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False}
-    # models = [smp.Unet(**csl_init_args), smp.Unet(**csl_init_args), smp.Unet(**csl_init_args)] # Initialize model
-    # ------------------commented paused here on 31st May 2024
 
     # -----code added on 31st May 2024
     csl_init_args = {'encoder_name':args.encoder_name, 'in_channels':num_channels, 'classes':args.num_classes, 
                      'encoder_weights':None, 'activation':None, 'add_reconstruction_head':False, 'dropout_prob':0.5}
     models = [UNetWithDropout(**csl_init_args), UNetWithDropout(**csl_init_args), UNetWithDropout(**csl_init_args)] # Initialize model
-    # path = '/share/projects/siamdl/outputs/45090_20240529_dual/model_outputs/fold_2_best_model_ssl.pth'
-    
-    # # best recon: '/share/projects/siamdl/outputs/44999_20240527_single_recon/model_outputs/fold_0_best_model_ssl.pth'
-    # # best siam: '/share/projects/siamdl/outputs/45000_20240527_single_segsiam/model_outputs/fold_1_best_model_ssl.pth'
-    # # best dual: '/share/projects/siamdl/outputs/45090_20240529_dual/model_outputs/fold_2_best_model_ssl.pth'
 
-    # ssl_model = smp.Unet(**ssl_init_args)
-    # ckpt = torch.load(path)
-    # ssl_model.load_state_dict(ckpt['model_state_dict'])
-    # print("Loaded the best model from the best fold of the pretext task")
+    models[0].encoder.load_state_dict(ssl_model.encoder.state_dict())
+    models[1].encoder.load_state_dict(ssl_model.encoder.state_dict())
+    models[2].encoder.load_state_dict(ssl_model.encoder.state_dict())
 
-    # models[0].encoder.load_state_dict(ssl_model.encoder.state_dict())
-    # models[1].encoder.load_state_dict(ssl_model.encoder.state_dict())
-    # models[2].encoder.load_state_dict(ssl_model.encoder.state_dict())
-
-    # # copy decoder weights except the head weights
-    # models[0].decoder.load_state_dict(ssl_model.decoder.state_dict())
-    # models[1].decoder.load_state_dict(ssl_model.decoder.state_dict())
-    # models[2].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    # copy decoder weights except the head weights
+    models[0].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    models[1].decoder.load_state_dict(ssl_model.decoder.state_dict())
+    models[2].decoder.load_state_dict(ssl_model.decoder.state_dict())
     #----- code ends here - 31st May 2024
 
     # ---------comented resumes here on 31st May 2024
     # # Copy the all weights from the best fold model, skip head weights
-    models[0].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
-    models[1].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
-    models[2].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # models[0].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # models[1].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
+    # models[2].encoder.load_state_dict(trained_ssl_models[best_fold_key].encoder.state_dict())
 
-    # copy decoder weights except the head weights
-    models[0].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
-    models[1].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
-    models[2].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    # # copy decoder weights except the head weights
+    # models[0].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    # models[1].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
+    # models[2].decoder.load_state_dict(trained_ssl_models[best_fold_key].decoder.state_dict())
 
-    # # DELETING TRAINED MODELS TO FREE UP MEMORY
-    del trained_ssl_models
+    # # # DELETING TRAINED MODELS TO FREE UP MEMORY
+    # del trained_ssl_models
     #----------------commented paused here on 31st May 2024
 
     # Freeze/unfreeze the encoder weights, based on finetuning/feature extraction

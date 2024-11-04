@@ -72,7 +72,8 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
             acc = acc_t1 + acc_t2
         
         elif ssl_type == 'single_segsiam':                                    
-            outputs_t1, _,_ = model(features)      #task 1 - siam prediction
+            outputs_t1, _,log_vars = model(features)      #task 1 - siam prediction
+            log_var_seg, log_var_rec = log_vars[0], log_vars[1]
             loss_t1 = criterion_t1(outputs_t1, labels) 
             loss_t2 = torch.Tensor([0])
             loss = loss_t1                 
@@ -84,7 +85,8 @@ def train_epoch_ssl(model, data, optimizer, ssl_type, criterion_t1,criterion_t2,
             acc = acc_t1     
         
         elif ssl_type == 'single_recon':
-            _, outputs_t2,_ = model(features)
+            _, outputs_t2,log_vars= model(features)
+            log_var_seg, log_var_rec = log_vars[0], log_vars[1]
             loss_t1 = torch.Tensor([0])
             loss_t2 = criterion_t2(outputs_t2, features) #task 2 - predict input bands back
             loss = loss_t2
@@ -536,8 +538,7 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
         plt.close()
 
         #--------------------------Plot weights and logvariance
-        weights_seg = [1/np.exp(log_var) for log_var in history['log_var_seg_history']]
-        weights_rec = [1/2*np.exp(log_var) for log_var in history['log_var_rec_history']]
+
         fig, axs = plt.subplots(1,2, figsize=(12, 5))
         colors = ['b', 'g', 'r']
         for i, (fold, history) in enumerate(fold_histories.items()):
@@ -545,6 +546,8 @@ def save_training_curves_ssl(best_epoch_nums, fold_histories, fold_metrics, cros
             axs[0].plot(history['log_var_rec_history'], label=f'Fold {i+1} Reconstruction', color=colors[i], linestyle='--')
             axs[0].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')
 
+            weights_seg = [1/np.exp(log_var) for log_var in history['log_var_seg_history']] 
+            weights_rec = [1/(2*np.exp(log_var)) for log_var in history['log_var_rec_history']]
             axs[1].plot(weights_seg, label=f'Fold {i+1} Segmentation', color=colors[i])
             axs[1].plot(weights_rec, label=f'Fold {i+1} Reconstruction', color=colors[i], linestyle='--')
             axs[1].axvline(x=best_epoch_nums[i], color=colors[i], linestyle='-.', label=f'Fold {i+1} Best Epoch')

@@ -29,10 +29,10 @@ NUM_CLASSES=11
 LR=0.0001
 GAMMA=0.92
 WEIGHT_DECAY=1e-7
-EPOCHS=2
+EPOCHS=80
 SSL_TYPE="dual"
 OMEGA=0.5
-EPOCHS_SSL=5
+EPOCHS_SSL=60
 GAMMA_SSL=0.92
 SIAM_GRAN_SSL="siam_96"
 LOSS_SSL_1="CELoss"
@@ -41,7 +41,7 @@ METRIC_SSL_1="IoUScore"
 METRIC_SSL_2="R2Metric"
 ENCODER_NAME="resnet50"
 OUT_PATH="/share/projects/siamdl/outputs/${SLURM_JOBID}_$(date +%Y%m%d)_$SSL_TYPE/quickview/"
-REMARKS="Rerunning dual task learning with nn.Parameter initialization - uncertainty weighting, wrapped loss functions in nn module"
+REMARKS="Rerunning labelled data dependence tests. 50%"
 
 # Create output directory
 mkdir -p $OUT_PATH
