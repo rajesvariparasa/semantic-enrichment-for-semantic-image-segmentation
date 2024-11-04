@@ -7,8 +7,28 @@ Keywords: semantic enrichment, semantic segmentation,pretraining, multi-task lea
 
 For further details, please refer to the [paper](https://rajesvariparasa.github.io/assets/docs/Parasa_Thesis_v2.pdf).
 
+### Methods
 
-The ssl implementation needs a reconstruction head implemented in this version of SMP library: 
+A)  Illustration of the different training scenarios for models trained from scratch employed by this study
+![Training Scenarios](docs/images/model_supervised.png)
+
+
+B)  Illustration of the different training scenarios for pretraining tasks employed by this study
+![Pretraining Scenarios](docs/images/model_pretraining.png)
+
+### Results
+
+A) Model performance as a function of the proportion of labelled samples
+![Performance](docs/images/results_4_pc_labelled_data_impact.png)
+
+B) Model performance vs training convergence (tradeoff)
+![Convergence](docs/images/results_3_comparison_iou_conv_time.png)
+
+C) Classwise model performance
+![Classwise](docs/images/results_5_class_comp_iou_color.png)
+
+# Implementation
+The implementation pretraining experiments need a reconstruction head implemented in this version of SMP library: 
 [SMP ReconstructionHead](https://github.com/rajesvariparasa/segmentation_models.pytorch_reconstructionhead)
 
 Install using command:
