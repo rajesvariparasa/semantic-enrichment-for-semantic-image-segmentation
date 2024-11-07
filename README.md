@@ -5,7 +5,7 @@ The incorporation of prior knowledge into deep learning models is expanding acro
 
 Keywords: semantic enrichment, semantic segmentation,pretraining, multi-task learning
 
-**For further details, please refer to the [paper](https://eplus.uni-salzburg.at/Abschlussarbeiten/content/titleinfo/10144183).**
+**For further details, please refer to the [full report](https://eplus.uni-salzburg.at/Abschlussarbeiten/content/titleinfo/10144183).**
 
 ### Methods
 
